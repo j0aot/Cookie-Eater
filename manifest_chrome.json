@@ -3,17 +3,9 @@
 	"name": "Cookie Eater",
 	"description": "Total privacy protection: rejects cookies, blocks trackers, prevents fingerprinting, automatic cleaning and much more.",
 	"version": "2.0.0",
-	"browser_specific_settings": {
-		"gecko": {
-			"id": "cookie-eater@teu-dominio.com",
-			"strict_min_version": "109.0"
-		}
-	},
-	"permissions": ["cookies", "tabs", "storage", "webRequest", "declarativeNetRequest", "activeTab", "scripting", "notifications", "contextMenus", "alarms"],
+	"permissions": ["cookies", "tabs", "storage", "webRequest", "declarativeNetRequest", "activeTab", "scripting", "notifications", "contextMenus", "alarms", "windows"],
 	"host_permissions": ["<all_urls>"],
-	"background": {
-		"scripts": ["background.js"]
-	},
+	"background": { "service_worker": "background.js" },
 	"content_scripts": [
 		{
 			"matches": ["<all_urls>"],
