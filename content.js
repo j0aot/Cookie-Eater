@@ -40,7 +40,7 @@
 		'reject',
 	];
 
-	const SAVE_TEXTS = ['guardar', 'gravar', 'salvar', 'confirmar minhas escolhas', 'save', 'save preferences', 'save changes', 'submit preferences'];
+	const SAVE_TEXTS = ['guardar', 'gravar', 'salvar', 'confirmar minhas escolhas', 'guardar alterações', 'save', 'save preferences', 'save changes', 'submit preferences'];
 
 	const PREFS_TEXTS = ['saiba mais', 'saber mais', 'gerir cookies', 'personalizar', 'definições', 'preferências', 'manage cookies', 'cookie settings'];
 
@@ -91,14 +91,13 @@
 
 		// --- INSIDE THE BANNER LOGIC ---
 
-		// 1. Check for ENABLED Save Button (This means we are done selecting)
 		const allButtons = activeBanner.querySelectorAll("button, [role='button'], span, div[class*='btn']");
 		let saveBtn = null;
 
+		// 1. Check for ENABLED Save Button
 		for (const el of allButtons) {
 			const txt = textOf(el);
 			if (SAVE_TEXTS.includes(txt) && isElementVisible(el)) {
-				// If the button is not disabled, we can save
 				if (!el.disabled && el.getAttribute('aria-disabled') !== 'true') {
 					saveBtn = el;
 					break;
@@ -119,7 +118,7 @@
 		// 2. Look for "Reject" buttons to toggle
 		let clickedSomething = false;
 		for (const el of allButtons) {
-			// Skip links (<a>) that lead to other pages to avoid navigation errors
+			// Skip links that lead to other pages
 			if (el.tagName === 'A' && el.getAttribute('href') && !el.getAttribute('href').startsWith('#')) continue;
 
 			const txt = textOf(el);
@@ -127,7 +126,6 @@
 				log('Toggling Reject option', el);
 				forceClick(el);
 				clickedSomething = true;
-				// In multi-option panels, we don't return here; we let the loop click all rejects
 			}
 		}
 
@@ -156,7 +154,7 @@
 
 	function init() {
 		log('Surgical Scanner initialized.');
-		setInterval(run, 1000); // Check every second
+		setInterval(run, 1000);
 
 		const obs = new MutationObserver(run);
 		obs.observe(document.documentElement, { childList: true, subtree: true });
