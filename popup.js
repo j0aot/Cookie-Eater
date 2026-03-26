@@ -5,6 +5,21 @@ const $ = id => document.getElementById(id);
 let currentDomain = '';
 let currentTab = null;
 
+// Helper para criar elementos sem usar innerHTML (Aprova na Mozilla)
+function createEl(tag, attrs = {}, children = []) {
+	const el = document.createElement(tag);
+	for (const [k, v] of Object.entries(attrs)) {
+		if (k === 'className') el.className = v;
+		else if (k === 'textContent') el.textContent = v;
+		else if (k === 'title') el.title = v;
+		else el.setAttribute(k, v);
+	}
+	for (const child of children) {
+		if (child) el.appendChild(child);
+	}
+	return el;
+}
+
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
 	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -23,7 +38,7 @@ async function init() {
 		loadCookies();
 	} else {
 		$('site-name').textContent = 'Extension / New tab';
-		$('cookies-list').innerHTML = '<div class="no-cookies">Open a website to view cookies.</div>';
+		$('cookies-list').replaceChildren(createEl('div', { className: 'no-cookies', textContent: 'Open a website to view cookies.' }));
 	}
 
 	loadStats();
@@ -125,22 +140,23 @@ async function loadCookies() {
 	$('cookie-count-label').textContent = `${cookies.length} cookie${cookies.length !== 1 ? 's' : ''} on this site`;
 
 	if (cookies.length === 0) {
-		list.innerHTML = '<div class="no-cookies">🎉 No cookies detected!</div>';
+		list.replaceChildren(createEl('div', { className: 'no-cookies', textContent: '🎉 No cookies detected!' }));
 		return;
 	}
 
-	list.innerHTML = cookies
-		.map(
-			c => `
-    <div class="cookie-row">
-      <div class="cat-dot cat-${c.category}"></div>
-      <span class="cookie-name" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
-      <span class="cookie-cat">${c.category}</span>
-      ${c.whitelisted ? '<span class="cookie-wl">WL</span>' : ''}
-    </div>
-  `,
-		)
-		.join('');
+	list.replaceChildren(
+		...cookies.map(c => {
+			const children = [
+				createEl('div', { className: `cat-dot cat-${c.category}` }),
+				createEl('span', { className: 'cookie-name', title: c.name, textContent: c.name }),
+				createEl('span', { className: 'cookie-cat', textContent: c.category }),
+			];
+			if (c.whitelisted) {
+				children.push(createEl('span', { className: 'cookie-wl', textContent: 'WL' }));
+			}
+			return createEl('div', { className: 'cookie-row' }, children);
+		}),
+	);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -158,9 +174,6 @@ function host(url) {
 
 function fmt(n) {
 	return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-}
-function escHtml(s) {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 let toastTimer;

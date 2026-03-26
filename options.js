@@ -4,8 +4,25 @@
 // ── Helpers ──────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const msg = (action, extra = {}) => new Promise(r => chrome.runtime.sendMessage({ action, ...extra }, r));
-const fmtDate = ts => new Date(ts).toLocaleString('en-US'); // Changed to en-US for English format
-const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const fmtDate = ts => new Date(ts).toLocaleString('en-US');
+
+// Helper para criar elementos sem usar innerHTML (Aprova na Mozilla)
+function createEl(tag, attrs = {}, children = []) {
+	const el = document.createElement(tag);
+	for (const [k, v] of Object.entries(attrs)) {
+		if (k === 'style') el.style.cssText = v;
+		else if (k === 'className') el.className = v;
+		else if (k === 'textContent') el.textContent = v;
+		else if (k === 'onclick') el.onclick = v;
+		else if (k === 'title') el.title = v;
+		else el.setAttribute(k, v);
+	}
+	for (const child of children) {
+		if (typeof child === 'string') el.appendChild(document.createTextNode(child));
+		else if (child) el.appendChild(child);
+	}
+	return el;
+}
 
 let toastTimer;
 function toast(text, err = false) {
@@ -103,21 +120,21 @@ async function loadWhitelist() {
 	const wl = await msg('getWhitelist');
 	const tbody = $('wl-tbody');
 	if (!wl.length) {
-		tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Whitelist is empty. Add domains to protect them.</td></tr>';
+		tbody.replaceChildren(
+			createEl('tr', {}, [createEl('td', { colSpan: '4', style: 'text-align:center;color:var(--muted);padding:20px', textContent: 'Whitelist is empty. Add domains to protect them.' })]),
+		);
 		return;
 	}
-	tbody.innerHTML = wl
-		.map(
-			(e, i) => `
-    <tr>
-      <td class="mono">${esc(e.domain)}</td>
-      <td><span class="badge badge-${e.type}">${e.type === 'white' ? '⬜ Whitelist' : '🔘 Greylist'}</span></td>
-      <td style="font-size:11px;color:var(--muted)">${e.type === 'grey' && e.cookies?.length ? esc(e.cookies.join(', ')) : e.type === 'white' ? 'All' : '—'}</td>
-      <td><button class="btn sm danger" onclick="removeWl(${i})">🗑 Remove</button></td>
-    </tr>
-  `,
-		)
-		.join('');
+	tbody.replaceChildren(
+		...wl.map((e, i) =>
+			createEl('tr', {}, [
+				createEl('td', { className: 'mono', textContent: e.domain }),
+				createEl('td', {}, [createEl('span', { className: `badge badge-${e.type}`, textContent: e.type === 'white' ? '⬜ Whitelist' : '🔘 Greylist' })]),
+				createEl('td', { style: 'font-size:11px;color:var(--muted)', textContent: e.type === 'grey' && e.cookies?.length ? e.cookies.join(', ') : e.type === 'white' ? 'All' : '—' }),
+				createEl('td', {}, [createEl('button', { className: 'btn sm danger', textContent: '🗑 Remove', onclick: () => removeWl(i) })]),
+			]),
+		),
+	);
 }
 
 window.removeWl = async i => {
@@ -161,20 +178,18 @@ async function loadRules() {
 	const rules = await msg('getSiteRules');
 	const tbody = $('rules-tbody');
 	if (!rules.length) {
-		tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No rules defined.</td></tr>';
+		tbody.replaceChildren(createEl('tr', {}, [createEl('td', { colSpan: '3', style: 'text-align:center;color:var(--muted);padding:20px', textContent: 'No rules defined.' })]));
 		return;
 	}
-	tbody.innerHTML = rules
-		.map(
-			(r, i) => `
-    <tr>
-      <td class="mono">${esc(r.domain)}</td>
-      <td>${ruleLabels[r.rule] || r.rule}</td>
-      <td><button class="btn sm danger" onclick="removeRule(${i})">🗑 Remove</button></td>
-    </tr>
-  `,
-		)
-		.join('');
+	tbody.replaceChildren(
+		...rules.map((r, i) =>
+			createEl('tr', {}, [
+				createEl('td', { className: 'mono', textContent: r.domain }),
+				createEl('td', { textContent: ruleLabels[r.rule] || r.rule }),
+				createEl('td', {}, [createEl('button', { className: 'btn sm danger', textContent: '🗑 Remove', onclick: () => removeRule(i) })]),
+			]),
+		),
+	);
 }
 
 window.removeRule = async i => {
@@ -222,7 +237,6 @@ $('save-schedule').addEventListener('click', async () => {
 
 $('clean-now').addEventListener('click', async () => {
 	toast('⏳ Running cleanup…');
-	// Trigger via alarm or direct message
 	await msg('clearAll');
 	toast('✅ Cleanup complete!');
 });
@@ -232,23 +246,31 @@ async function loadProfiles() {
 	const { profiles, activeProfile } = await msg('getProfiles');
 	const grid = $('profile-grid');
 	if (!profiles?.length) {
-		grid.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">No profiles saved yet.<br>Save your current settings to activate them later.</div></div>';
+		grid.replaceChildren(
+			createEl('div', { className: 'empty' }, [
+				createEl('div', { className: 'empty-icon', textContent: '👤' }),
+				createEl('div', { className: 'empty-text' }, ['No profiles saved yet.', createEl('br'), 'Save your current settings to activate them later.']),
+			]),
+		);
 		return;
 	}
-	grid.innerHTML = profiles
-		.map(
-			p => `
-    <div class="profile-card" style="${p.id === activeProfile ? 'border-color:var(--accent)' : ''}">
-      <div class="profile-name">${esc(p.name)} ${p.id === activeProfile ? '<span style="font-size:10px;color:var(--accent)">(active)</span>' : ''}</div>
-      <div class="profile-date">${fmtDate(p.createdAt || Date.now())}</div>
-      <div class="profile-actions">
-        <button class="btn sm primary" onclick="loadProfile('${p.id}')">▶ Load</button>
-        <button class="btn sm danger" onclick="deleteProfile('${p.id}')">🗑</button>
-      </div>
-    </div>
-  `,
-		)
-		.join('');
+	grid.replaceChildren(
+		...profiles.map(p => {
+			const nameEl = createEl('div', { className: 'profile-name', textContent: p.name });
+			if (p.id === activeProfile) {
+				nameEl.appendChild(document.createTextNode(' '));
+				nameEl.appendChild(createEl('span', { style: 'font-size:10px;color:var(--accent)', textContent: '(active)' }));
+			}
+			return createEl('div', { className: 'profile-card', style: p.id === activeProfile ? 'border-color:var(--accent)' : '' }, [
+				nameEl,
+				createEl('div', { className: 'profile-date', textContent: fmtDate(p.createdAt || Date.now()) }),
+				createEl('div', { className: 'profile-actions' }, [
+					createEl('button', { className: 'btn sm primary', textContent: '▶ Load', onclick: () => loadProfile(p.id) }),
+					createEl('button', { className: 'btn sm danger', textContent: '🗑', onclick: () => deleteProfile(p.id) }),
+				]),
+			]);
+		}),
+	);
 }
 
 window.loadProfile = async id => {
@@ -288,24 +310,28 @@ function renderRisk(scores) {
 		.sort(([, a], [, b]) => b.score - a.score);
 	const tbody = $('risk-tbody');
 	if (!entries.length) {
-		tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">No risk data yet. Browse some sites first.</td></tr>';
+		tbody.replaceChildren(
+			createEl('tr', {}, [createEl('td', { colSpan: '5', style: 'text-align:center;color:var(--muted);padding:24px', textContent: 'No risk data yet. Browse some sites first.' })]),
+		);
 		return;
 	}
-	tbody.innerHTML = entries
-		.map(([domain, data]) => {
+	tbody.replaceChildren(
+		...entries.map(([domain, data]) => {
 			const color = data.score >= 80 ? '#f43f5e' : data.score >= 50 ? '#f97316' : data.score >= 25 ? '#eab308' : '#22c55e';
 			const lbl = data.score >= 80 ? 'Critical' : data.score >= 50 ? 'High' : data.score >= 25 ? 'Medium' : 'Low';
-			return `<tr>
-      <td class="mono">${esc(domain)}</td>
-      <td><span style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:${color}">${data.score}</span>/100</td>
-      <td><span class="badge" style="color:${color};border-color:${color}40;background:${color}15">${lbl}</span></td>
-      <td style="font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc((data.factors || []).join(', '))}">${esc(
-				(data.factors || []).slice(0, 3).join(', '),
-			)}${(data.factors || []).length > 3 ? '…' : ''}</td>
-      <td class="mono" style="font-size:10px;color:var(--muted)">${data.lastUpdated ? fmtDate(data.lastUpdated) : '—'}</td>
-    </tr>`;
-		})
-		.join('');
+			const factorsFull = (data.factors || []).join(', ');
+			let factorsShort = (data.factors || []).slice(0, 3).join(', ');
+			if ((data.factors || []).length > 3) factorsShort += '…';
+
+			return createEl('tr', {}, [
+				createEl('td', { className: 'mono', textContent: domain }),
+				createEl('td', {}, [createEl('span', { style: `font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:${color}`, textContent: data.score }), '/100']),
+				createEl('td', {}, [createEl('span', { className: 'badge', style: `color:${color};border-color:${color}40;background:${color}15`, textContent: lbl })]),
+				createEl('td', { style: 'font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis', title: factorsFull, textContent: factorsShort }),
+				createEl('td', { className: 'mono', style: 'font-size:10px;color:var(--muted)', textContent: data.lastUpdated ? fmtDate(data.lastUpdated) : '—' }),
+			]);
+		}),
+	);
 }
 
 $('risk-clear').addEventListener('click', async () => {
@@ -331,33 +357,37 @@ function renderTrackers(map) {
 
 	const el = $('tracker-content');
 	if (!entries.length) {
-		el.innerHTML = '<div class="empty"><div class="empty-icon">🗺️</div><div class="empty-text">No trackers detected yet.<br>Browse some sites to populate the map.</div></div>';
+		el.replaceChildren(
+			createEl('div', { className: 'empty' }, [
+				createEl('div', { className: 'empty-icon', textContent: '🗺️' }),
+				createEl('div', { className: 'empty-text' }, ['No trackers detected yet.', createEl('br'), 'Browse some sites to populate the map.']),
+			]),
+		);
 		return;
 	}
 
-	el.innerHTML = entries
-		.map(([site, trackers]) => {
+	el.replaceChildren(
+		...entries.map(([site, trackers]) => {
 			const total = Object.values(trackers).reduce((s, n) => s + n, 0);
 			const bars = Object.entries(trackers)
 				.sort(([, a], [, b]) => b - a)
-				.map(
-					([t, n]) => `
-      <div class="tracker-bar">
-        <span class="tracker-name">${esc(t)}</span>
-        <div class="tracker-bar-fill" style="width:${Math.min(120, n * 8)}px"></div>
-        <span class="tracker-count">${n}×</span>
-      </div>
-    `,
-				)
-				.join('');
-			return `<div class="card" style="margin-bottom:12px">
-      <div class="card-title" style="margin-bottom:12px">${esc(site)} <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace">${
-				Object.keys(trackers).length
-			} trackers · ${total} requests</span></div>
-      ${bars}
-    </div>`;
-		})
-		.join('');
+				.map(([t, n]) =>
+					createEl('div', { className: 'tracker-bar' }, [
+						createEl('span', { className: 'tracker-name', textContent: t }),
+						createEl('div', { className: 'tracker-bar-fill', style: `width:${Math.min(120, n * 8)}px` }),
+						createEl('span', { className: 'tracker-count', textContent: `${n}×` }),
+					]),
+				);
+			return createEl('div', { className: 'card', style: 'margin-bottom:12px' }, [
+				createEl('div', { className: 'card-title', style: 'margin-bottom:12px' }, [
+					site,
+					' ',
+					createEl('span', { style: "font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace", textContent: `${Object.keys(trackers).length} trackers · ${total} requests` }),
+				]),
+				...bars,
+			]);
+		}),
+	);
 }
 
 // ═══ HONEYPOTS ════════════════════════════════════════════════════
@@ -365,19 +395,19 @@ async function loadHoneypots() {
 	const list = await msg('getHoneypots');
 	const tbody = $('honeypot-tbody');
 	if (!list.length) {
-		tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">🎉 No honeypots detected. Nice!</td></tr>';
+		tbody.replaceChildren(createEl('tr', {}, [createEl('td', { colSpan: '4', style: 'text-align:center;color:var(--muted);padding:24px', textContent: '🎉 No honeypots detected. Nice!' })]));
 		return;
 	}
-	tbody.innerHTML = list
-		.map(
-			h => `<tr>
-    <td class="mono">${esc(h.domain)}</td>
-    <td class="mono" style="color:var(--yellow)">${esc(h.name)}</td>
-    <td class="mono" style="color:var(--muted)">${esc(h.value || '—')}</td>
-    <td class="mono" style="font-size:10px;color:var(--muted)">${fmtDate(h.detected)}</td>
-  </tr>`,
-		)
-		.join('');
+	tbody.replaceChildren(
+		...list.map(h =>
+			createEl('tr', {}, [
+				createEl('td', { className: 'mono', textContent: h.domain }),
+				createEl('td', { className: 'mono', style: 'color:var(--yellow)', textContent: h.name }),
+				createEl('td', { className: 'mono', style: 'color:var(--muted)', textContent: h.value || '—' }),
+				createEl('td', { className: 'mono', style: 'font-size:10px;color:var(--muted)', textContent: fmtDate(h.detected) }),
+			]),
+		),
+	);
 }
 
 // ═══ AUDIT ════════════════════════════════════════════════════════
@@ -392,21 +422,25 @@ function renderAudit(log) {
 	const filtered = log.filter(e => !q || e.domain?.includes(q) || e.action?.includes(q) || e.name?.includes(q));
 	const el = $('audit-list');
 	if (!filtered.length) {
-		el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">No entries found.</div>';
+		el.replaceChildren(createEl('div', { style: 'padding:20px;text-align:center;color:var(--muted)', textContent: 'No entries found.' }));
 		return;
 	}
 	const cls = a => (a.includes('delete') || a.includes('deleted') ? 'deleted' : a.includes('set') ? 'set' : a.includes('banner') ? 'banner' : a.includes('scheduled') ? 'scheduled' : 'other');
-	el.innerHTML = filtered
-		.map(
-			e => `
-    <div class="log-row">
-      <span class="log-ts">${fmtDate(e.ts)}</span>
-      <span class="log-action log-${cls(e.action)}">${esc(e.action)}</span>
-      <span class="log-domain">${esc(e.domain || '')} ${e.name ? '<span style="color:var(--muted)">' + esc(e.name) + '</span>' : ''}</span>
-    </div>
-  `,
-		)
-		.join('');
+
+	el.replaceChildren(
+		...filtered.map(e => {
+			const domainEl = createEl('span', { className: 'log-domain', textContent: e.domain || '' });
+			if (e.name) {
+				domainEl.appendChild(document.createTextNode(' '));
+				domainEl.appendChild(createEl('span', { style: 'color:var(--muted)', textContent: e.name }));
+			}
+			return createEl('div', { className: 'log-row' }, [
+				createEl('span', { className: 'log-ts', textContent: fmtDate(e.ts) }),
+				createEl('span', { className: `log-action log-${cls(e.action)}`, textContent: e.action }),
+				domainEl,
+			]);
+		}),
+	);
 }
 
 $('audit-clear').addEventListener('click', async () => {
@@ -427,51 +461,62 @@ async function loadReceipts() {
 	const list = await msg('getReceipts');
 	const tbody = $('receipts-tbody');
 	if (!list.length) {
-		tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">No receipts yet. Visit sites with cookie banners to generate automatic receipts.</td></tr>';
+		tbody.replaceChildren(
+			createEl('tr', {}, [
+				createEl('td', { colSpan: '4', style: 'text-align:center;color:var(--muted);padding:24px', textContent: 'No receipts yet. Visit sites with cookie banners to generate automatic receipts.' }),
+			]),
+		);
 		return;
 	}
-	tbody.innerHTML = list
-		.map(
-			r => `<tr>
-    <td class="mono">${esc(r.domain)}</td>
-    <td class="mono" style="font-size:11px">${fmtDate(r.ts)}</td>
-    <td><span class="badge badge-Functional">${esc(r.bannerType || 'auto')}</span></td>
-    <td style="font-size:10px;color:var(--muted)">${esc(r.proof || '—')}</td>
-  </tr>`,
-		)
-		.join('');
+	tbody.replaceChildren(
+		...list.map(r =>
+			createEl('tr', {}, [
+				createEl('td', { className: 'mono', textContent: r.domain }),
+				createEl('td', { className: 'mono', style: 'font-size:11px', textContent: fmtDate(r.ts) }),
+				createEl('td', {}, [createEl('span', { className: 'badge badge-Functional', textContent: r.bannerType || 'auto' })]),
+				createEl('td', { style: 'font-size:10px;color:var(--muted)', textContent: r.proof || '—' }),
+			]),
+		),
+	);
 }
 
 // ═══ REPORT ══════════════════════════════════════════════════════
 async function loadReport() {
 	const report = await msg('getReport');
 	const stats = report.stats || {};
-	$('report-stats').innerHTML = [
+
+	const statData = [
 		{ n: stats.cookiesDeleted || 0, l: 'Cookies removed', i: '🍪' },
 		{ n: stats.trackersBlocked || 0, l: 'Trackers blocked', i: '🚫' },
 		{ n: stats.bannersRejected || 0, l: 'Banners rejected', i: '📋' },
 		{ n: stats.domainsProtected || 0, l: 'Protected domains', i: '🛡️' },
 		{ n: report.summary?.highRiskDomains || 0, l: 'High risk sites', i: '⚠️' },
 		{ n: report.summary?.honeypots || 0, l: 'Honeypots found', i: '🍯' },
-	]
-		.map(s => `<div class="stat-card"><div style="font-size:24px">${s.i}</div><div class="stat-num">${s.n}</div><div class="stat-name">${s.l}</div></div>`)
-		.join('');
+	];
+
+	$('report-stats').replaceChildren(
+		...statData.map(s =>
+			createEl('div', { className: 'stat-card' }, [
+				createEl('div', { style: 'font-size:24px', textContent: s.i }),
+				createEl('div', { className: 'stat-num', textContent: s.n }),
+				createEl('div', { className: 'stat-name', textContent: s.l }),
+			]),
+		),
+	);
 
 	const top = report.summary?.topTrackers || [];
 	if (top.length) {
 		$('report-trackers-card').style.display = 'block';
 		const max = top[0]?.n || 1;
-		$('report-trackers-list').innerHTML = top
-			.map(
-				t => `
-      <div class="tracker-bar">
-        <span class="tracker-name">${esc(t.d)}</span>
-        <div class="tracker-bar-fill" style="width:${Math.round((t.n / max) * 180)}px"></div>
-        <span class="tracker-count">${t.n}×</span>
-      </div>
-    `,
-			)
-			.join('');
+		$('report-trackers-list').replaceChildren(
+			...top.map(t =>
+				createEl('div', { className: 'tracker-bar' }, [
+					createEl('span', { className: 'tracker-name', textContent: t.d }),
+					createEl('div', { className: 'tracker-bar-fill', style: `width:${Math.round((t.n / max) * 180)}px` }),
+					createEl('span', { className: 'tracker-count', textContent: `${t.n}×` }),
+				]),
+			),
+		);
 	}
 }
 
@@ -485,7 +530,7 @@ $('report-refresh').addEventListener('click', loadReport);
 // ═══ ADVANCED ════════════════════════════════════════════════════
 $('btn-export').addEventListener('click', async () => {
 	const { config } = await msg('export');
-	download('cookie-eater-config.json', config); // Changed file name
+	download('cookie-eater-config.json', config);
 	toast('📤 Configuration exported');
 });
 
