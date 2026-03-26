@@ -1,3 +1,4 @@
+// Cookie Eater — Background Service Worker v2
 'use strict';
 
 // ═══════════════════════════════════════════════════
@@ -106,43 +107,48 @@ chrome.commands.onCommand.addListener(async cmd => {
 	if (!tab?.url) return;
 	const domain = host(tab.url);
 	const n = await clearDomainCookies(domain, tab.url);
-	notify('🍪 Cookies limpos', `${n} cookies removidos de ${domain}`);
+	notify('🍪 Cookies cleared', `${n} cookies removed from ${domain}`);
 });
 
 // ═══════════════════════════════════════════════════
-// STORAGE HELPERS (Cloud Sync)
+// STORAGE HELPERS (With Cloud Sync)
 // ═══════════════════════════════════════════════════
 
-// Sync data
+// Define which data should be synced between devices
 const SYNC_KEYS = ['settings', 'whitelist', 'siteRules', 'profiles', 'activeProfile'];
 
-// Load data
+// Unified function to load data (searches Cloud and Local)
 const load = keys =>
 	new Promise(resolve => {
-    const keysArray = Array.isArray(keys) ? keys : [keys];
-    
+		const keysArray = Array.isArray(keys) ? keys : [keys];
+
+		// Separate keys based on their destination
 		const syncKeys = keysArray.filter(k => SYNC_KEYS.includes(k));
 		const localKeys = keysArray.filter(k => !SYNC_KEYS.includes(k));
 
+		// Execute calls in parallel
 		Promise.all([
 			syncKeys.length ? new Promise(r => chrome.storage.sync.get(syncKeys, r)) : Promise.resolve({}),
 			localKeys.length ? new Promise(r => chrome.storage.local.get(localKeys, r)) : Promise.resolve({}),
 		]).then(([syncData, localData]) => {
+			// Return merged data
 			resolve({ ...syncData, ...localData });
 		});
 	});
 
-// Store data
+// Unified function to store data (distributes to Cloud and Local)
 const store = data =>
 	new Promise(resolve => {
 		const syncData = {};
 		const localData = {};
 
+		// Split data to save
 		for (const key in data) {
 			if (SYNC_KEYS.includes(key)) syncData[key] = data[key];
 			else localData[key] = data[key];
 		}
 
+		// Save in parallel to respective locations
 		Promise.all([
 			Object.keys(syncData).length ? new Promise(r => chrome.storage.sync.set(syncData, r)) : Promise.resolve(),
 			Object.keys(localData).length ? new Promise(r => chrome.storage.local.set(localData, r)) : Promise.resolve(),
@@ -163,11 +169,11 @@ async function incrementStat(key, n = 1) {
 function setupContextMenus() {
 	chrome.contextMenus.removeAll(() => {
 		const items = [
-			{ id: 'clear-cookies', title: '🍪 Limpar cookies deste domínio', contexts: ['page', 'link'] },
-			{ id: 'whitelist-domain', title: '✅ Adicionar ao whitelist', contexts: ['page'] },
-			{ id: 'greylist-domain', title: '🔘 Adicionar ao greylist', contexts: ['page'] },
-			{ id: 'view-risk', title: '🛡️ Ver score de privacidade', contexts: ['page'] },
-			{ id: 'open-settings', title: '⚙️ Abrir definições', contexts: ['page'] },
+			{ id: 'clear-cookies', title: '🍪 Clear cookies for this domain', contexts: ['page', 'link'] },
+			{ id: 'whitelist-domain', title: '✅ Add to whitelist', contexts: ['page'] },
+			{ id: 'greylist-domain', title: '🔘 Add to greylist', contexts: ['page'] },
+			{ id: 'view-risk', title: '🛡️ View privacy score', contexts: ['page'] },
+			{ id: 'open-settings', title: '⚙️ Open settings', contexts: ['page'] },
 		];
 		items.forEach(i => chrome.contextMenus.create(i));
 	});
@@ -179,15 +185,15 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 	switch (info.menuItemId) {
 		case 'clear-cookies':
 			const n = await clearDomainCookies(domain, tab.url);
-			notify('🍪 Cookies limpos', `${n} cookies removidos de ${domain}`);
+			notify('🍪 Cookies cleared', `${n} cookies removed from ${domain}`);
 			break;
 		case 'whitelist-domain':
 			await upsertWhitelist(domain, 'white');
-			notify('✅ Whitelist', `${domain} adicionado ao whitelist.`);
+			notify('✅ Whitelist', `${domain} added to whitelist.`);
 			break;
 		case 'greylist-domain':
 			await upsertWhitelist(domain, 'grey');
-			notify('🔘 Greylist', `${domain} adicionado ao greylist.`);
+			notify('🔘 Greylist', `${domain} added to greylist.`);
 			break;
 		case 'view-risk':
 			chrome.tabs.create({ url: `chrome-extension://${chrome.runtime.id}/options.html#risk=${domain}` });
@@ -227,7 +233,7 @@ async function scheduledClean() {
 	}
 	await incrementStat('cookiesDeleted', deleted);
 	await audit('scheduled-clean', 'all', `${deleted} cookies`);
-	notify('📅 Limpeza programada', `${deleted} cookies removidos automaticamente.`);
+	notify('📅 Scheduled cleaning', `${deleted} cookies automatically removed.`);
 }
 
 // ═══════════════════════════════════════════════════
@@ -254,6 +260,7 @@ chrome.tabs.onRemoved.addListener(async tabId => {
 	if (await isWhitelisted(domain, '*', whitelist)) return;
 	const rule = getSiteRule(domain, siteRules);
 	if (rule === 'keep-all') return;
+	// Skip if domain still open elsewhere
 	const tabs = await chrome.tabs.query({});
 	if (tabs.some(t => t.url && host(t.url) === domain)) return;
 	const n = await clearDomainCookies(domain, url, whitelist, rule);
@@ -401,10 +408,10 @@ async function updateRisk(domain, factor) {
 }
 
 function riskLabel(score) {
-	if (score >= 80) return { label: 'Crítico', color: '#f43f5e' };
-	if (score >= 50) return { label: 'Alto', color: '#f97316' };
-	if (score >= 25) return { label: 'Médio', color: '#f59e0b' };
-	return { label: 'Baixo', color: '#10b981' };
+	if (score >= 80) return { label: 'Critical', color: '#f43f5e' };
+	if (score >= 50) return { label: 'High', color: '#f97316' };
+	if (score >= 25) return { label: 'Medium', color: '#f59e0b' };
+	return { label: 'Low', color: '#10b981' };
 }
 
 // ═══════════════════════════════════════════════════
@@ -422,7 +429,7 @@ async function detectHoneypot(cookie, domain) {
 	list.unshift({ domain, name, detected: Date.now(), value: value.slice(0, 16) + '…' });
 	if (list.length > 200) list.length = 200;
 	await store({ honeypots: list });
-	await updateRisk(domain, `Honeypot suspeito: ${name}`);
+	await updateRisk(domain, `Suspicious honeypot: ${name}`);
 }
 
 // ═══════════════════════════════════════════════════
@@ -437,9 +444,9 @@ async function checkAutoIncognito(tab, domain, threshold) {
 	chrome.notifications.create(`incognito-${tab.id}`, {
 		type: 'basic',
 		iconUrl: 'icons/icon48.png',
-		title: '⚠️ Site de alto risco detectado',
-		message: `${domain} tem score ${score}/100. Abrir em modo incógnito?`,
-		buttons: [{ title: 'Abrir incógnito' }, { title: 'Ignorar' }],
+		title: '⚠️ High risk site detected',
+		message: `${domain} has a score of ${score}/100. Open in incognito mode?`,
+		buttons: [{ title: 'Open incognito' }, { title: 'Ignore' }],
 		requireInteraction: true,
 	});
 }
@@ -486,8 +493,8 @@ function showStartupReport(stats) {
 	chrome.notifications.create('startup', {
 		type: 'basic',
 		iconUrl: 'icons/icon48.png',
-		title: 'Cookie Guardian — Relatório de Sessão',
-		message: `🍪 ${stats.cookiesDeleted || 0} cookies removidos\n` + `🚫 ${stats.trackersBlocked || 0} trackers bloqueados\n` + `🛡️ ${stats.domainsProtected || 0} domínios protegidos`,
+		title: 'Cookie Eater — Session Report',
+		message: `🍪 ${stats.cookiesDeleted || 0} cookies removed\n` + `🚫 ${stats.trackersBlocked || 0} trackers blocked\n` + `🛡️ ${stats.domainsProtected || 0} protected domains`,
 	});
 }
 
@@ -505,7 +512,7 @@ async function saveProfile(name) {
 async function loadProfile(id) {
 	const { profiles } = await load('profiles');
 	const p = (profiles || []).find(p => p.id === id);
-	if (!p) throw new Error('Perfil não encontrado');
+	if (!p) throw new Error('Profile not found');
 	await store({ settings: p.settings, whitelist: p.whitelist, activeProfile: id });
 	setupContextMenus();
 	setupAlarms();
@@ -687,7 +694,7 @@ async function dispatch(msg) {
 				setupAlarms();
 				return { ok: true };
 			} catch (e) {
-				return { error: 'JSON inválido: ' + e.message };
+				return { error: 'Invalid JSON: ' + e.message };
 			}
 		}
 

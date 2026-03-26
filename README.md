@@ -1,80 +1,58 @@
-# 🍪 Cookie Rejector
+# 🍪 Cookie Eater
 
-Extensão para Chrome/Edge que automaticamente:
-- **Rejeita banners de cookies** em milhares de sites
-- **Bloqueia trackers e analytics** na rede (Google Analytics, Facebook Pixel, Hotjar, etc.)
+Extension for Chrome/Edge/Brave that automatically protects your privacy:
+- **Rejects cookie banners** on thousands of sites (with granular rejection fallback).
+- **Blocks network trackers and analytics** (Google Analytics, Facebook Pixel, Hotjar, etc.).
+- **Syncs your settings** securely via your browser's cloud.
 
 ---
 
-## Instalação
+## 🚀 Installation & Testing
 
 ### Chrome / Edge / Brave
 
-1. Abra o navegador e vá para `chrome://extensions`
-2. Ative o **"Modo do desenvolvedor"** (canto superior direito)
-3. Clique em **"Carregar sem compactação"**
-4. Selecione a pasta `cookie-rejector`
-5. ✅ Pronto! O ícone aparecerá na barra de ferramentas.
+1. Open your browser and go to `chrome://extensions` (or `edge://extensions`).
+2. Enable **"Developer mode"** in the top right corner.
+3. Click on **"Load unpacked"**.
+4. Select the folder containing the extension files (where `manifest.json` is located).
+5. ✅ Done! Pin the icon to your toolbar for quick access.
 
 ### Firefox
 
-> O Firefox usa Manifest V2. Para portar, ajuste o manifest e use `browser.*` ao invés de `chrome.*`.
+> Firefox uses Manifest V2. To port it, you will need to adjust the `manifest.json` and use `browser.*` instead of `chrome.*`.
 
 ---
 
-## O que é bloqueado
+## 🛡️ Features Included
 
-### Banners de cookies (auto-clique em "Rejeitar")
-- OneTrust, Cookiebot, Didomi, Axeptio, Klaro, CookieHub, Quantcast CMP, TrustArc, e muito mais
-- Detecção por seletores CSS e por texto do botão (PT, EN, ES, FR, DE)
-- Retry automático para banners carregados com atraso
+### 1. Cookie Banner Management
+- **Auto-click "Reject All":** Works with OneTrust, Cookiebot, Didomi, Axeptio, Klaro, and more.
+- **Granular Rejection:** If the total rejection button is hidden, the extension opens the preferences panel and saves the essential settings by default.
 
-### Trackers bloqueados na rede (declarativeNetRequest)
-| Categoria | Serviços |
+### 2. Network Blocking (Trackers)
+Uses the high-performance `declarativeNetRequest` API to intercept requests.
+| Category | Blocked Services |
 |---|---|
-| Analytics | Google Analytics, Matomo, Piwik PRO, Amplitude, Mixpanel, Segment |
-| Heatmaps | Hotjar, Mouseflow, Crazy Egg, FullStory, Microsoft Clarity, LogRocket, Heap |
-| Ads | Facebook Pixel, Google Tag Manager, DoubleClick, Twitter Ads, LinkedIn Insight, Bing Ads, Pinterest, TikTok Ads |
-| Monitoramento | Sentry, Bugsnag, New Relic, Datadog |
-| Chat/CRM | Intercom |
+| **Analytics** | Google Analytics, Matomo, Piwik PRO, Amplitude, Mixpanel, Segment |
+| **Heatmaps** | Hotjar, Mouseflow, Crazy Egg, FullStory, Microsoft Clarity, LogRocket, Heap |
+| **Ads** | Facebook Pixel, Google Tag Manager, DoubleClick, Twitter Ads, LinkedIn Insight, Bing Ads, TikTok Ads |
+
+### 3. Advanced Privacy & Synchronization
+- Cloud sync for your whitelist, site rules, and profiles.
+- Protection against fingerprinting (Canvas, WebGL).
+- Automatic URL cleaning (removes `utm_`, `fbclid`, etc.).
 
 ---
 
-## Estrutura de arquivos
+## 📁 File Structure
 
-```
-cookie-rejector/
-├── manifest.json      # Configuração da extensão (Manifest V3)
-├── content.js         # Script injetado nas páginas (rejeita banners)
-├── background.js      # Service worker (estatísticas)
-├── rules.json         # Regras de bloqueio de rede (40 domínios)
-├── popup.html         # Interface do popup
-├── popup.js           # Lógica do popup
-└── icons/             # Ícones (adicione icon16.png, icon48.png, icon128.png)
-```
-
----
-
-## Adicionar ícones
-
-Coloque imagens PNG na pasta `icons/`:
-- `icon16.png` — 16×16 px
-- `icon48.png` — 48×48 px  
-- `icon128.png` — 128×128 px
-
-Ou remova a seção `"icons"` do `manifest.json` para usar o ícone padrão do Chrome.
-
----
-
-## Limitações conhecidas
-
-- Alguns sites com banners muito customizados podem não ser detectados automaticamente
-- O bloqueio de rede não remove scripts já embutidos no HTML (inline scripts)
-- Para Firefox, é necessário adaptar para Manifest V2
-
----
-
-## Contribuir / Expandir
-
-Para adicionar mais seletores de rejeição, edite o array `REJECT_SELECTORS` em `content.js`.  
-Para bloquear mais domínios de tracking, adicione entradas em `rules.json` (máximo 5000 regras no MV3).
+```text
+cookie-guardian/
+├── manifest.json         # Extension configuration (Manifest V3)
+├── content.js            # Script to reject banners and save preferences
+├── content-privacy.js    # Anti-fingerprinting and URL cleaning script
+├── background.js         # Service worker (Statistics and Cloud Sync)
+├── rules.json            # Network blocking rules
+├── popup.html / .js      # Quick interface (icon click)
+├── options.html / .js    # Advanced settings screen
+└── icons/                # Extension icons
