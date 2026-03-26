@@ -100,16 +100,6 @@ chrome.runtime.onStartup.addListener(async () => {
 	if (settings?.showStartupReport) showStartupReport(stats);
 });
 
-// Keyboard shortcut
-chrome.commands.onCommand.addListener(async cmd => {
-	if (cmd !== 'clear-current-tab') return;
-	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-	if (!tab?.url) return;
-	const domain = host(tab.url);
-	const n = await clearDomainCookies(domain, tab.url);
-	notify('🍪 Cookies cleared', `${n} cookies removed from ${domain}`);
-});
-
 // ═══════════════════════════════════════════════════
 // STORAGE HELPERS (With Cloud Sync)
 // ═══════════════════════════════════════════════════
