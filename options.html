@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8"/>
+<title>Cookie Guardian — Definições</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#070b12;--s1:#0d1320;--s2:#111827;--border:#1e2d45;--border2:#253650;
+  --accent:#00d4ff;--accent2:#7c3aed;--green:#22c55e;--red:#f43f5e;
+  --orange:#f97316;--yellow:#eab308;--text:#e2e8f0;--muted:#64748b;--muted2:#94a3b8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{display:flex;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:13px}
+/* SIDEBAR */
+.sidebar{width:220px;min-height:100vh;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
+.logo-row{display:flex;align-items:center;gap:10px}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 16px rgba(0,212,255,.2)}
+.logo-name{font-size:15px;font-weight:800;letter-spacing:-.3px}
+.logo-ver{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px}
+.nav{flex:1;padding:12px 10px}
+.nav-section{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:10px 10px 6px;font-family:'JetBrains Mono',monospace}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:8px;cursor:pointer;transition:all .15s;color:var(--muted2);font-size:13px;font-weight:600;margin-bottom:2px}
+.nav-item:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.nav-item.active{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)}
+.nav-item .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.sidebar-footer{padding:16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);text-align:center;font-family:'JetBrains Mono',monospace;line-height:1.6}
+/* MAIN */
+.main{flex:1;overflow-y:auto;padding:32px 40px}
+.main::-webkit-scrollbar{width:4px}
+.main::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.page{display:none}
+.page.active{display:block}
+.page-title{font-size:24px;font-weight:800;margin-bottom:4px;letter-spacing:-.5px}
+.page-sub{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.5}
+/* CARDS */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:7px}
+.card-desc{font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.6}
+/* TOGGLES */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-info{flex:1;padding-right:16px}
+.toggle-label{font-size:13px;font-weight:600;margin-bottom:2px}
+.toggle-desc{font-size:11px;color:var(--muted);line-height:1.5}
+.tog{position:relative;width:40px;height:22px;flex-shrink:0;cursor:pointer}
+.tog input{display:none}
+.tog-slider{position:absolute;inset:0;background:var(--border);border-radius:22px;transition:.2s}
+.tog-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:var(--muted);border-radius:50%;transition:.2s}
+.tog input:checked+.tog-slider{background:var(--accent)}
+.tog input:checked+.tog-slider::before{transform:translateX(18px);background:#fff;box-shadow:0 0 6px rgba(0,212,255,.5)}
+/* INPUTS */
+.input-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.input-row label{font-size:12px;color:var(--muted);min-width:160px}
+input[type=number],input[type=text],input[type=time],select{background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:7px 11px;border-radius:7px;font-size:12px;font-family:'Syne',sans-serif;outline:none;transition:.15s}
+input[type=number]:focus,input[type=text]:focus,input[type=time]:focus,select:focus{border-color:var(--accent)}
+select option{background:var(--s2)}
+/* BUTTONS */
+.btn{padding:9px 16px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:12px;font-family:'Syne',sans-serif;cursor:pointer;transition:all .15s;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff}
+.btn.primary:hover{opacity:.85;color:#fff}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn.danger:hover{background:rgba(244,63,94,.1)}
+.btn.sm{padding:6px 11px;font-size:11px}
+/* TABLES */
+.table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse}
+th{background:var(--s2);padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-family:'JetBrains Mono',monospace;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px}
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;border:1px solid}
+.badge-Analytics{color:#f59e0b;border-color:#f59e0b30;background:#f59e0b10}
+.badge-Marketing{color:#f43f5e;border-color:#f43f5e30;background:#f43f5e10}
+.badge-Functional{color:#22c55e;border-color:#22c55e30;background:#22c55e10}
+.badge-Session{color:#00d4ff;border-color:#00d4ff30;background:#00d4ff10}
+.badge-Unknown{color:#64748b;border-color:#64748b30;background:#64748b10}
+.badge-white{color:#22c55e;border-color:#22c55e30;background:#22c55e10}
+.badge-grey{color:#94a3b8;border-color:#94a3b830;background:#94a3b810}
+/* RISK SCORE */
+.risk-big{display:flex;align-items:center;gap:24px;margin-bottom:20px}
+.risk-num{font-family:'JetBrains Mono',monospace;font-size:52px;font-weight:700;line-height:1}
+.risk-info{flex:1}
+.risk-label{font-size:16px;font-weight:700;margin-bottom:4px}
+.risk-factors{font-size:11px;color:var(--muted);line-height:1.7}
+/* TEXTAREA */
+textarea{width:100%;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:12px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:11px;resize:vertical;outline:none;line-height:1.6}
+textarea:focus{border-color:var(--accent)}
+/* STAT GRID */
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat-card{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-num{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-name{font-size:11px;color:var(--muted);margin-top:4px}
+/* ADD FORM */
+.add-form{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+/* PROFILE CARD */
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.profile-card{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.profile-name{font-weight:700;font-size:13px}
+.profile-date{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.profile-actions{display:flex;gap:6px;margin-top:4px}
+/* LOG */
+.log-row{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);font-size:11px}
+.log-row:last-child{border-bottom:none}
+.log-ts{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0;min-width:130px}
+.log-action{font-family:'JetBrains Mono',monospace;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600}
+.log-deleted{background:#f43f5e15;color:var(--red);border:1px solid #f43f5e25}
+.log-set{background:#f59e0b15;color:var(--yellow);border:1px solid #f59e0b25}
+.log-banner{background:#22c55e15;color:var(--green);border:1px solid #22c55e25}
+.log-scheduled{background:#00d4ff15;color:var(--accent);border:1px solid #00d4ff25}
+.log-other{background:#64748b15;color:var(--muted);border:1px solid #64748b25}
+.log-domain{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* EMPTY STATE */
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:10px}
+.empty-text{font-size:13px;line-height:1.6}
+/* SEARCH */
+.search-bar{display:flex;gap:8px;margin-bottom:14px;align-items:center}
+.search-bar input{flex:1}
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--s1);border:1px solid var(--border);padding:10px 18px;border-radius:9px;font-size:12px;color:var(--text);opacity:0;transform:translateY(12px);transition:all .2s;pointer-events:none;z-index:999}
+.toast.show{opacity:1;transform:translateY(0)}
+/* TRACKER BAR */
+.tracker-bar{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.tracker-bar:last-child{border-bottom:none}
+.tracker-name{flex:1;font-family:'JetBrains Mono',monospace;font-size:11px}
+.tracker-bar-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--red),var(--accent2));flex-shrink:0}
+.tracker-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);min-width:30px;text-align:right}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-row">
+      <div class="logo-icon">🛡️</div>
+      <div>
+        <div class="logo-name">Cookie Guardian</div>
+        <div class="logo-ver">v2.0.0 · Definições</div>
+      </div>
+    </div>
+  </div>
+  <div class="nav">
+    <div class="nav-section">Proteção</div>
+    <div class="nav-item active" data-page="general"><span class="icon">🛡️</span>Geral</div>
+    <div class="nav-item" data-page="whitelist"><span class="icon">✅</span>Whitelist / Greylist</div>
+    <div class="nav-item" data-page="rules"><span class="icon">📋</span>Regras por Site</div>
+    <div class="nav-section">Automação</div>
+    <div class="nav-item" data-page="schedule"><span class="icon">📅</span>Limpeza Programada</div>
+    <div class="nav-item" data-page="profiles"><span class="icon">👤</span>Perfis</div>
+    <div class="nav-section">Análise</div>
+    <div class="nav-item" data-page="risk"><span class="icon">⚠️</span>Score de Risco</div>
+    <div class="nav-item" data-page="trackers"><span class="icon">🗺️</span>Mapa de Trackers</div>
+    <div class="nav-item" data-page="honeypots"><span class="icon">🍯</span>Honeypots</div>
+    <div class="nav-section">Registos</div>
+    <div class="nav-item" data-page="audit"><span class="icon">📜</span>Auditoria</div>
+    <div class="nav-item" data-page="receipts"><span class="icon">🧾</span>Recibos RGPD</div>
+    <div class="nav-item" data-page="report"><span class="icon">📊</span>Relatório</div>
+    <div class="nav-section">Sistema</div>
+    <div class="nav-item" data-page="advanced"><span class="icon">🔧</span>Import / Export</div>
+  </div>
+  <div class="sidebar-footer">Cookie Guardian<br>Proteção de privacidade<br>total para o teu browser</div>
+</nav>
+
+<main class="main">
+
+  <!-- GERAL -->
+  <div class="page active" id="page-general">
+    <div class="page-title">🛡️ Definições Gerais</div>
+    <div class="page-sub">Controla todas as funcionalidades de proteção de privacidade.</div>
+
+    <div class="card">
+      <div class="card-title">🍪 Gestão de Cookies</div>
+      <div class="card-desc">Funções principais de remoção e controlo de cookies.</div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Proteção ativa</div><div class="toggle-desc">Liga/desliga toda a proteção do Cookie Guardian.</div></div>
+        <label class="tog"><input type="checkbox" data-key="enabled" checked/><span class="tog-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Apagar cookies ao fechar tabs</div><div class="toggle-desc">Remove automaticamente todos os cookies de um domínio quando fechas o último tab aberto nesse site.</div></div>
+        <label class="tog"><input type="checkbox" data-key="autoDeleteOnTabClose"/><span class="tog-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Mostrar contagem no ícone</div><div class="toggle-desc">Exibe o número de cookies do site atual diretamente no ícone da extensão.</div></div>
+        <label class="tog"><input type="checkbox" data-key="showBadgeCount"/><span class="tog-slider"></span></label>
+      </div>
+      <div class="input-row">
+        <label>Duração máxima de cookies (dias)</label>
+        <input type="number" data-key="maxCookieLifetimeDays" min="0" max="365" style="width:80px" placeholder="0=off"/>
+        <span style="font-size:11px;color:var(--muted)">0 = desativado</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔒 Privacidade Avançada</div>
+      <div class="card-desc">Proteção contra técnicas modernas de rastreamento que não usam cookies.</div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Proteção contra fingerprinting</div><div class="toggle-desc">Adiciona ruído aleatório ao Canvas, WebGL, AudioContext e outros APIs usados para criar perfis únicos do teu browser sem cookies.</div></div>
+        <label class="tog"><input type="checkbox" data-key="fingerprintProtection"/><span class="tog-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Remover parâmetros de rastreamento de URLs</div><div class="toggle-desc">Elimina automaticamente utm_source, fbclid, gclid e +40 outros parâmetros de tracking dos URLs que visitas.</div></div>
+        <label class="tog"><input type="checkbox" data-key="stripTrackingParams"/><span class="tog-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Limpar localStorage de trackers</div><div class="toggle-desc">Remove chaves de rastreamento conhecidas do localStorage (Google Analytics, Hotjar, Facebook, etc.) ao carregar cada página.</div></div>
+        <label class="tog"><input type="checkbox" data-key="cleanLocalStorage"/><span class="tog-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Limpar sessionStorage de trackers</div><div class="toggle-desc">Igual ao anterior mas para o sessionStorage (dados de sessão temporários).</div></div>
+        <label class="tog"><input type="checkbox" data-key="cleanSessionStorage"/><span class="tog-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📢 Notificações</div>
+      <div class="card-desc">Configura quando e como a extensão te contacta.</div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Relatório ao iniciar o browser</div><div class="toggle-desc">Mostra uma notificação com o resumo da tua proteção cada vez que abres o Chrome.</div></div>
+        <label class="tog"><input type="checkbox" data-key="showStartupReport"/><span class="tog-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info"><div class="toggle-label">Menu de contexto (clique direito)</div><div class="toggle-desc">Adiciona opções ao menu do botão direito para limpar cookies, whitelist e ver risco.</div></div>
+        <label class="tog"><input type="checkbox" data-key="contextMenuEnabled"/><span class="tog-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ Modo Incógnito Automático</div>
+      <div class="card-desc">Propõe abrir sites de alto risco diretamente em modo incógnito.</div>
+      <div class="input-row">
+        <label>Score mínimo para propor incógnito</label>
+        <input type="number" data-key="autoIncognitoThreshold" min="0" max="100" style="width:80px" placeholder="0=off"/>
+        <span style="font-size:11px;color:var(--muted)">0 = desativado</span>
+      </div>
+    </div>
+
+    <button class="btn primary" id="save-general">💾 Guardar definições</button>
+  </div>
+
+  <!-- WHITELIST -->
+  <div class="page" id="page-whitelist">
+    <div class="page-title">✅ Whitelist / Greylist</div>
+    <div class="page-sub">
+      <b>Whitelist</b>: mantém TODOS os cookies do domínio intactos.<br>
+      <b>Greylist</b>: mantém apenas os cookies funcionais especificados (os outros são removidos).
+    </div>
+    <div class="add-form">
+      <input type="text" id="wl-domain" placeholder="exemplo.com" style="width:200px"/>
+      <select id="wl-type"><option value="white">⬜ Whitelist</option><option value="grey">🔘 Greylist</option></select>
+      <button class="btn primary sm" id="wl-add">+ Adicionar</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Domínio</th><th>Tipo</th><th>Cookies permitidos</th><th>Ações</th></tr></thead>
+        <tbody id="wl-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">A carregar…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RULES -->
+  <div class="page" id="page-rules">
+    <div class="page-title">📋 Regras por Site</div>
+    <div class="page-sub">Define comportamentos específicos para domínios individuais, com prioridade sobre as definições globais.</div>
+    <div class="add-form">
+      <input type="text" id="rule-domain" placeholder="exemplo.com" style="width:200px"/>
+      <select id="rule-type">
+        <option value="delete-all">🗑️ Apagar tudo</option>
+        <option value="delete-third-party">🔎 Apagar só third-party</option>
+        <option value="keep-all">✅ Manter tudo</option>
+      </select>
+      <button class="btn primary sm" id="rule-add">+ Adicionar</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Domínio</th><th>Regra</th><th>Ações</th></tr></thead>
+        <tbody id="rules-tbody"><tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">A carregar…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SCHEDULE -->
+  <div class="page" id="page-schedule">
+    <div class="page-title">📅 Limpeza Programada</div>
+    <div class="page-sub">Configura limpezas automáticas periódicas, independentemente dos tabs abertos.</div>
+    <div class="card">
+      <div class="card-title">⏰ Intervalo de limpeza</div>
+      <div class="card-desc">A extensão apagará todos os cookies não-whitelisted com a frequência definida.</div>
+      <div class="input-row">
+        <label>Intervalo (horas)</label>
+        <input type="number" data-key="scheduledCleaningIntervalHours" min="0" max="168" style="width:100px" placeholder="0=desativado"/>
+        <span style="font-size:11px;color:var(--muted)">0 = desativado · ex: 24 = uma vez por dia</span>
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn primary sm" id="save-schedule">💾 Guardar</button>
+        <button class="btn sm" id="clean-now" style="margin-left:8px">▶ Executar limpeza agora</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILES -->
+  <div class="page" id="page-profiles">
+    <div class="page-title">👤 Perfis de Configuração</div>
+    <div class="page-sub">Guarda snapshots das tuas definições + whitelist. Útil para alternar entre contextos (trabalho, pessoal, segurança máxima).</div>
+    <div class="add-form">
+      <input type="text" id="profile-name" placeholder="Nome do perfil (ex: Trabalho)" style="width:220px"/>
+      <button class="btn primary sm" id="profile-save">💾 Guardar perfil atual</button>
+    </div>
+    <div class="profile-grid" id="profile-grid">
+      <div class="empty"><div class="empty-icon">👤</div><div class="empty-text">Nenhum perfil guardado ainda.</div></div>
+    </div>
+  </div>
+
+  <!-- RISK -->
+  <div class="page" id="page-risk">
+    <div class="page-title">⚠️ Score de Risco</div>
+    <div class="page-sub">Classificação de privacidade para cada domínio visitado, baseada em cookies de tracking, trackers de rede e honeypots detectados.</div>
+    <div class="search-bar">
+      <input type="text" id="risk-search" placeholder="Filtrar por domínio…" style="max-width:300px"/>
+      <button class="btn sm danger" id="risk-clear">🗑️ Limpar todos</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Domínio</th><th>Score</th><th>Nível</th><th>Fatores</th><th>Atualizado</th></tr></thead>
+        <tbody id="risk-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">A carregar…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TRACKERS -->
+  <div class="page" id="page-trackers">
+    <div class="page-title">🗺️ Mapa de Trackers</div>
+    <div class="page-sub">Visualização de quais domínios de terceiros estão a rastrear-te em cada site que visitas.</div>
+    <div class="search-bar">
+      <input type="text" id="tracker-search" placeholder="Filtrar por site ou tracker…"/>
+    </div>
+    <div id="tracker-content">
+      <div class="empty"><div class="empty-icon">🗺️</div><div class="empty-text">A carregar mapa de trackers…</div></div>
+    </div>
+  </div>
+
+  <!-- HONEYPOTS -->
+  <div class="page" id="page-honeypots">
+    <div class="page-title">🍯 Honeypots Detectados</div>
+    <div class="page-sub">Cookies suspeitos que os sites usam para detetar ad-blockers ou extensões de privacidade. Detetados por heurísticas: valor aleatório longo + nome suspeito.</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Domínio</th><th>Cookie</th><th>Valor (truncado)</th><th>Detectado em</th></tr></thead>
+        <tbody id="honeypot-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">A carregar…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- AUDIT -->
+  <div class="page" id="page-audit">
+    <div class="page-title">📜 Log de Auditoria</div>
+    <div class="page-sub">Registo detalhado de todas as ações da extensão: cookies apagados, definidos, banners rejeitados, limpezas programadas.</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      <input type="text" id="audit-search" placeholder="Filtrar por domínio ou ação…" style="flex:1;max-width:300px"/>
+      <button class="btn sm danger" id="audit-clear">🗑️ Limpar log</button>
+      <button class="btn sm" id="audit-export">📥 Exportar JSON</button>
+    </div>
+    <div id="audit-list" style="background:var(--s1);border:1px solid var(--border);border-radius:10px;max-height:500px;overflow-y:auto">
+      <div style="padding:20px;text-align:center;color:var(--muted)">A carregar…</div>
+    </div>
+  </div>
+
+  <!-- RECEIPTS -->
+  <div class="page" id="page-receipts">
+    <div class="page-title">🧾 Recibos de Consentimento RGPD</div>
+    <div class="page-sub">Prova de que rejeitaste os cookies em cada site. Útil para disputas relacionadas com o RGPD/GDPR.</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Domínio</th><th>Data</th><th>Tipo de banner</th><th>Prova</th></tr></thead>
+        <tbody id="receipts-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">A carregar…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- REPORT -->
+  <div class="page" id="page-report">
+    <div class="page-title">📊 Relatório de Privacidade</div>
+    <div class="page-sub">Resumo completo da tua proteção. Podes exportar como JSON para análise.</div>
+    <div class="stat-grid" id="report-stats"></div>
+    <div class="card" id="report-trackers-card" style="display:none">
+      <div class="card-title">🚫 Top Trackers Bloqueados</div>
+      <div id="report-trackers-list"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn primary" id="report-export">📥 Exportar relatório JSON</button>
+      <button class="btn" id="report-refresh">↺ Atualizar</button>
+    </div>
+  </div>
+
+  <!-- ADVANCED -->
+  <div class="page" id="page-advanced">
+    <div class="page-title">🔧 Import / Export</div>
+    <div class="page-sub">Exporta as tuas definições, whitelist, regras e perfis. Importa numa instalação diferente ou faz backup.</div>
+    <div class="card">
+      <div class="card-title">📤 Exportar Configuração</div>
+      <div class="card-desc">Gera um ficheiro JSON com todas as tuas definições, whitelist, regras por site e perfis.</div>
+      <button class="btn primary" id="btn-export">📤 Exportar tudo para JSON</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📥 Importar Configuração</div>
+      <div class="card-desc">Cola aqui o JSON exportado anteriormente. Substitui as definições, whitelist, regras e perfis atuais.</div>
+      <textarea id="import-json" rows="10" placeholder="Cola o JSON aqui…" style="margin-bottom:12px"></textarea>
+      <button class="btn primary" id="btn-import">📥 Importar</button>
+    </div>
+    <div class="card">
+      <div class="card-title">🗑️ Reset Total</div>
+      <div class="card-desc" style="color:var(--red)">Apaga TODAS as definições, whitelist, regras, perfis, estatísticas e logs. Irreversível.</div>
+      <button class="btn danger" id="btn-reset-all">⚠️ Reset total da extensão</button>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="options.js"></script>
+</body>
+</html>
