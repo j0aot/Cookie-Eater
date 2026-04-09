@@ -1,11 +1,9 @@
-// Cookie Eater — Popup Interface
 'use strict';
 
 const $ = id => document.getElementById(id);
 let currentDomain = '';
 let currentTab = null;
 
-// Helper para criar elementos sem usar innerHTML (Aprova na Mozilla)
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
 	for (const [k, v] of Object.entries(attrs)) {
@@ -20,17 +18,14 @@ function createEl(tag, attrs = {}, children = []) {
 	return el;
 }
 
-// ── Init ──────────────────────────────────────────────────────────
 async function init() {
 	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 	currentTab = tab;
 	currentDomain = tab?.url ? host(tab.url) : '';
 
-	// Toggle state
 	const settings = await msg('getSettings');
 	$('toggle').checked = settings?.enabled !== false;
 
-	// Site info
 	if (currentDomain) {
 		$('site-name').textContent = currentDomain;
 		$('favicon').src = `https://www.google.com/s2/favicons?domain=${currentDomain}&sz=16`;
@@ -114,7 +109,6 @@ function bindEvents() {
 	});
 }
 
-// ── Data loaders ──────────────────────────────────────────────────
 async function loadStats() {
 	const { stats } = await msg('getStats');
 	if (!stats) return;
@@ -159,7 +153,6 @@ async function loadCookies() {
 	);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
 function msg(action, extra = {}) {
 	return new Promise(r => chrome.runtime.sendMessage({ action, ...extra }, r));
 }

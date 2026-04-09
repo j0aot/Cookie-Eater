@@ -1,9 +1,5 @@
-// Cookie Eater — Background Service Worker v2
-'use strict';
 
-// ═══════════════════════════════════════════════════
-// CONSTANTS
-// ═══════════════════════════════════════════════════
+'use strict';
 
 const TRACKER_DOMAINS = [
 	'google-analytics.com',
@@ -66,12 +62,8 @@ const DEFAULT_STATS = {
 	lastReset: Date.now(),
 };
 
-// In-memory tab→domain map (resets on SW restart, that's fine)
 const tabDomains = new Map();
 
-// ═══════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
 	if (reason === 'install') {
@@ -100,45 +92,35 @@ chrome.runtime.onStartup.addListener(async () => {
 	if (settings?.showStartupReport) showStartupReport(stats);
 });
 
-// ═══════════════════════════════════════════════════
-// STORAGE HELPERS (With Cloud Sync)
-// ═══════════════════════════════════════════════════
 
-// Define which data should be synced between devices
+
 const SYNC_KEYS = ['settings', 'whitelist', 'siteRules', 'profiles', 'activeProfile'];
 
-// Unified function to load data (searches Cloud and Local)
 const load = keys =>
 	new Promise(resolve => {
 		const keysArray = Array.isArray(keys) ? keys : [keys];
 
-		// Separate keys based on their destination
 		const syncKeys = keysArray.filter(k => SYNC_KEYS.includes(k));
 		const localKeys = keysArray.filter(k => !SYNC_KEYS.includes(k));
 
-		// Execute calls in parallel
 		Promise.all([
 			syncKeys.length ? new Promise(r => chrome.storage.sync.get(syncKeys, r)) : Promise.resolve({}),
 			localKeys.length ? new Promise(r => chrome.storage.local.get(localKeys, r)) : Promise.resolve({}),
 		]).then(([syncData, localData]) => {
-			// Return merged data
 			resolve({ ...syncData, ...localData });
 		});
 	});
 
-// Unified function to store data (distributes to Cloud and Local)
 const store = data =>
 	new Promise(resolve => {
 		const syncData = {};
 		const localData = {};
 
-		// Split data to save
 		for (const key in data) {
 			if (SYNC_KEYS.includes(key)) syncData[key] = data[key];
 			else localData[key] = data[key];
 		}
 
-		// Save in parallel to respective locations
 		Promise.all([
 			Object.keys(syncData).length ? new Promise(r => chrome.storage.sync.set(syncData, r)) : Promise.resolve(),
 			Object.keys(localData).length ? new Promise(r => chrome.storage.local.set(localData, r)) : Promise.resolve(),
@@ -152,9 +134,6 @@ async function incrementStat(key, n = 1) {
 	await store({ stats: s });
 }
 
-// ═══════════════════════════════════════════════════
-// CONTEXT MENUS
-// ═══════════════════════════════════════════════════
 
 function setupContextMenus() {
 	chrome.contextMenus.removeAll(() => {
@@ -194,9 +173,6 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 	}
 });
 
-// ═══════════════════════════════════════════════════
-// ALARMS (scheduled cleaning)
-// ═══════════════════════════════════════════════════
 
 async function setupAlarms() {
 	chrome.alarms.clear('scheduled-clean');
@@ -226,9 +202,6 @@ async function scheduledClean() {
 	notify('📅 Scheduled cleaning', `${deleted} cookies automatically removed.`);
 }
 
-// ═══════════════════════════════════════════════════
-// TAB LIFECYCLE
-// ═══════════════════════════════════════════════════
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 	if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) return;
@@ -250,7 +223,6 @@ chrome.tabs.onRemoved.addListener(async tabId => {
 	if (await isWhitelisted(domain, '*', whitelist)) return;
 	const rule = getSiteRule(domain, siteRules);
 	if (rule === 'keep-all') return;
-	// Skip if domain still open elsewhere
 	const tabs = await chrome.tabs.query({});
 	if (tabs.some(t => t.url && host(t.url) === domain)) return;
 	const n = await clearDomainCookies(domain, url, whitelist, rule);
@@ -267,10 +239,6 @@ async function updateBadge(tabId, domain) {
 		chrome.action.setBadgeBackgroundColor({ color, tabId });
 	} catch (_) {}
 }
-
-// ═══════════════════════════════════════════════════
-// COOKIE MANAGEMENT
-// ═══════════════════════════════════════════════════
 
 async function clearDomainCookies(domain, url, whitelist, rule) {
 	if (!domain) return 0;
@@ -306,20 +274,14 @@ async function removeCookie(cookie, url) {
 	}
 }
 
-// ═══════════════════════════════════════════════════
-// COOKIE MONITORING
-// ═══════════════════════════════════════════════════
-
 chrome.cookies.onChanged.addListener(async ({ removed, cookie }) => {
 	if (removed) return;
 	const { settings } = await load('settings');
 	if (!settings?.enabled) return;
 	const domain = cookie.domain.replace(/^\./, '');
 
-	// Audit log
 	await audit('set', domain, cookie.name);
 
-	// Cookie lifetime enforcer
 	const maxDays = settings?.maxCookieLifetimeDays || 0;
 	if (maxDays > 0 && cookie.expirationDate) {
 		const maxTs = Date.now() / 1000 + maxDays * 86400;
@@ -328,19 +290,13 @@ chrome.cookies.onChanged.addListener(async ({ removed, cookie }) => {
 		}
 	}
 
-	// Classify & update risk
 	const cat = classifyCookie(cookie.name, domain);
 	if (cat === 'Analytics' || cat === 'Marketing') {
 		await updateRisk(domain, `${cat}: ${cookie.name}`);
 	}
 
-	// Honeypot detection
 	detectHoneypot(cookie, domain);
 });
-
-// ═══════════════════════════════════════════════════
-// WHITELIST / GREYLIST
-// ═══════════════════════════════════════════════════
 
 async function isWhitelisted(domain, cookieName, whitelist) {
 	if (!whitelist) ({ whitelist } = await load('whitelist'));
@@ -361,18 +317,12 @@ async function upsertWhitelist(domain, type, cookies = []) {
 	await store({ whitelist: wl });
 }
 
-// ═══════════════════════════════════════════════════
-// PER-SITE RULES
-// ═══════════════════════════════════════════════════
 
 function getSiteRule(domain, siteRules) {
 	const r = (siteRules || []).find(r => domain === r.domain || domain.endsWith('.' + r.domain));
 	return r?.rule || null;
 }
 
-// ═══════════════════════════════════════════════════
-// AUDIT LOG
-// ═══════════════════════════════════════════════════
 
 async function audit(action, domain, name = '', value = '') {
 	const { auditLog } = await load('auditLog');
@@ -381,9 +331,6 @@ async function audit(action, domain, name = '', value = '') {
 	await store({ auditLog: log });
 }
 
-// ═══════════════════════════════════════════════════
-// RISK SCORING
-// ═══════════════════════════════════════════════════
 
 async function updateRisk(domain, factor) {
 	const { riskScores } = await load('riskScores');
@@ -404,9 +351,6 @@ function riskLabel(score) {
 	return { label: 'Low', color: '#10b981' };
 }
 
-// ═══════════════════════════════════════════════════
-// HONEYPOT DETECTION
-// ═══════════════════════════════════════════════════
 
 async function detectHoneypot(cookie, domain) {
 	const { value = '', name } = cookie;
@@ -422,9 +366,6 @@ async function detectHoneypot(cookie, domain) {
 	await updateRisk(domain, `Suspicious honeypot: ${name}`);
 }
 
-// ═══════════════════════════════════════════════════
-// AUTO INCOGNITO
-// ═══════════════════════════════════════════════════
 
 async function checkAutoIncognito(tab, domain, threshold) {
 	if (tab.incognito) return;
@@ -450,9 +391,6 @@ chrome.notifications.onButtonClicked.addListener(async (id, btnIdx) => {
 	chrome.notifications.clear(id);
 });
 
-// ═══════════════════════════════════════════════════
-// TRACKER MAP (webRequest observation)
-// ═══════════════════════════════════════════════════
 
 chrome.webRequest.onCompleted.addListener(
 	async details => {
@@ -474,9 +412,6 @@ chrome.webRequest.onCompleted.addListener(
 	{ urls: ['<all_urls>'], types: ['script', 'xmlhttprequest', 'image'] },
 );
 
-// ═══════════════════════════════════════════════════
-// STARTUP REPORT
-// ═══════════════════════════════════════════════════
 
 function showStartupReport(stats) {
 	if (!stats) return;
@@ -488,9 +423,6 @@ function showStartupReport(stats) {
 	});
 }
 
-// ═══════════════════════════════════════════════════
-// PROFILES
-// ═══════════════════════════════════════════════════
 
 async function saveProfile(name) {
 	const { profiles, settings, whitelist } = await load(['profiles', 'settings', 'whitelist']);
@@ -508,9 +440,6 @@ async function loadProfile(id) {
 	setupAlarms();
 }
 
-// ═══════════════════════════════════════════════════
-// MESSAGE HANDLER
-// ═══════════════════════════════════════════════════
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 	dispatch(msg)
@@ -521,14 +450,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 
 async function dispatch(msg) {
 	switch (msg.action) {
-		// ── Stats & Status ──────────────────────────────
 		case 'getStats':
 			return load(['stats', 'settings']);
 		case 'clearStats':
 			await store({ stats: { ...DEFAULT_STATS, lastReset: Date.now() } });
 			return { ok: true };
 
-		// ── Cookies ──────────────────────────────────────
 		case 'getCookies': {
 			const cookies = await chrome.cookies.getAll({ domain: msg.domain });
 			const { whitelist } = await load('whitelist');
@@ -549,7 +476,6 @@ async function dispatch(msg) {
 			return { count: all.length };
 		}
 
-		// ── Settings ─────────────────────────────────────
 		case 'getSettings': {
 			const { settings } = await load('settings');
 			return settings || DEFAULT_SETTINGS;
@@ -562,7 +488,6 @@ async function dispatch(msg) {
 			return { ok: true };
 		}
 
-		// ── Whitelist ────────────────────────────────────
 		case 'getWhitelist': {
 			const { whitelist } = await load('whitelist');
 			return whitelist || [];
@@ -571,7 +496,6 @@ async function dispatch(msg) {
 			await store({ whitelist: msg.whitelist });
 			return { ok: true };
 
-		// ── Site Rules ───────────────────────────────────
 		case 'getSiteRules': {
 			const { siteRules } = await load('siteRules');
 			return siteRules || [];
@@ -580,7 +504,6 @@ async function dispatch(msg) {
 			await store({ siteRules: msg.siteRules });
 			return { ok: true };
 
-		// ── Profiles ─────────────────────────────────────
 		case 'getProfiles':
 			return load(['profiles', 'activeProfile']);
 		case 'saveProfile':
@@ -594,8 +517,6 @@ async function dispatch(msg) {
 			await store({ profiles: (profiles || []).filter(p => p.id !== msg.id) });
 			return { ok: true };
 		}
-
-		// ── Audit Log ────────────────────────────────────
 		case 'getAuditLog': {
 			const { auditLog } = await load('auditLog');
 			return (auditLog || []).slice(0, msg.limit || 300);
@@ -604,7 +525,6 @@ async function dispatch(msg) {
 			await store({ auditLog: [] });
 			return { ok: true };
 
-		// ── Risk ─────────────────────────────────────────
 		case 'getRisk': {
 			const { riskScores } = await load('riskScores');
 			const d = riskScores?.[msg.domain] || { score: 0, factors: [] };
@@ -618,13 +538,11 @@ async function dispatch(msg) {
 			await store({ riskScores: {} });
 			return { ok: true };
 
-		// ── Tracker Map ──────────────────────────────────
 		case 'getTrackerMap': {
 			const { trackerMap } = await load('trackerMap');
 			return trackerMap || {};
 		}
 
-		// ── Consent Receipts ─────────────────────────────
 		case 'getReceipts': {
 			const { consentReceipts } = await load('consentReceipts');
 			return consentReceipts || [];
@@ -633,13 +551,11 @@ async function dispatch(msg) {
 			await store({ consentReceipts: [] });
 			return { ok: true };
 
-		// ── Honeypots ────────────────────────────────────
 		case 'getHoneypots': {
 			const { honeypots } = await load('honeypots');
 			return honeypots || [];
 		}
 
-		// ── Privacy Report ───────────────────────────────
 		case 'getReport': {
 			const data = await load(['stats', 'riskScores', 'trackerMap', 'consentReceipts', 'honeypots', 'auditLog']);
 			const trackers = data.trackerMap || {};
@@ -667,7 +583,6 @@ async function dispatch(msg) {
 			};
 		}
 
-		// ── Export / Import ──────────────────────────────
 		case 'export': {
 			const d = await load(['settings', 'whitelist', 'siteRules', 'profiles']);
 			return { config: JSON.stringify(d, null, 2) };
@@ -688,7 +603,6 @@ async function dispatch(msg) {
 			}
 		}
 
-		// ── From content scripts ─────────────────────────
 		case 'rejected':
 			await incrementStat('bannersRejected');
 			await audit('banner-rejected', msg.site, 'cookie-banner', msg.bannerType || 'auto');
@@ -707,9 +621,6 @@ async function dispatch(msg) {
 	}
 }
 
-// ═══════════════════════════════════════════════════
-// UTILITIES
-// ═══════════════════════════════════════════════════
 
 function host(url) {
 	try {

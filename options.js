@@ -1,12 +1,9 @@
-// Cookie Eater — Options Script
 'use strict';
 
-// ── Helpers ──────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const msg = (action, extra = {}) => new Promise(r => chrome.runtime.sendMessage({ action, ...extra }, r));
 const fmtDate = ts => new Date(ts).toLocaleString('en-US');
 
-// Helper para criar elementos sem usar innerHTML (Aprova na Mozilla)
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
 	for (const [k, v] of Object.entries(attrs)) {
@@ -34,7 +31,6 @@ function toast(text, err = false) {
 	toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
-// ── Navigation ────────────────────────────────────────────────────
 document.querySelectorAll('.nav-item').forEach(item => {
 	item.addEventListener('click', () => {
 		document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -46,7 +42,6 @@ document.querySelectorAll('.nav-item').forEach(item => {
 	});
 });
 
-// Handle hash navigation
 function handleHash() {
 	const hash = location.hash.slice(1);
 	if (!hash) return;
@@ -94,7 +89,6 @@ function loadPage(page) {
 	}
 }
 
-// ═══ GENERAL ═════════════════════════════════════════════════════
 async function loadGeneral() {
 	const settings = await msg('getSettings');
 	document.querySelectorAll('[data-key]').forEach(el => {
@@ -115,7 +109,6 @@ $('save-general').addEventListener('click', async () => {
 	toast('✅ Settings saved!');
 });
 
-// ═══ WHITELIST ════════════════════════════════════════════════════
 async function loadWhitelist() {
 	const wl = await msg('getWhitelist');
 	const tbody = $('wl-tbody');
@@ -167,7 +160,6 @@ $('wl-add').addEventListener('click', async () => {
 	loadWhitelist();
 });
 
-// ═══ RULES ════════════════════════════════════════════════════════
 const ruleLabels = {
 	'delete-all': '🗑️ Delete all',
 	'delete-third-party': '🔎 3rd-party only',
@@ -222,7 +214,6 @@ $('rule-add').addEventListener('click', async () => {
 	loadRules();
 });
 
-// ═══ SCHEDULE ═════════════════════════════════════════════════════
 async function loadSchedule() {
 	const settings = await msg('getSettings');
 	const el = document.querySelector('[data-key="scheduledCleaningIntervalHours"]');
@@ -241,7 +232,6 @@ $('clean-now').addEventListener('click', async () => {
 	toast('✅ Cleanup complete!');
 });
 
-// ═══ PROFILES ════════════════════════════════════════════════════
 async function loadProfiles() {
 	const { profiles, activeProfile } = await msg('getProfiles');
 	const grid = $('profile-grid');
@@ -296,7 +286,6 @@ $('profile-save').addEventListener('click', async () => {
 	loadProfiles();
 });
 
-// ═══ RISK ════════════════════════════════════════════════════════
 async function loadRisk() {
 	const scores = await msg('getAllRisks');
 	renderRisk(scores);
@@ -341,7 +330,6 @@ $('risk-clear').addEventListener('click', async () => {
 	loadRisk();
 });
 
-// ═══ TRACKERS ════════════════════════════════════════════════════
 async function loadTrackers() {
 	const map = await msg('getTrackerMap');
 	const q_el = $('tracker-search');
@@ -390,7 +378,6 @@ function renderTrackers(map) {
 	);
 }
 
-// ═══ HONEYPOTS ════════════════════════════════════════════════════
 async function loadHoneypots() {
 	const list = await msg('getHoneypots');
 	const tbody = $('honeypot-tbody');
@@ -410,7 +397,6 @@ async function loadHoneypots() {
 	);
 }
 
-// ═══ AUDIT ════════════════════════════════════════════════════════
 async function loadAudit() {
 	const log = await msg('getAuditLog', { limit: 300 });
 	renderAudit(log);
@@ -456,7 +442,6 @@ $('audit-export').addEventListener('click', async () => {
 	toast('📥 Log exported');
 });
 
-// ═══ RECEIPTS ════════════════════════════════════════════════════
 async function loadReceipts() {
 	const list = await msg('getReceipts');
 	const tbody = $('receipts-tbody');
@@ -480,7 +465,6 @@ async function loadReceipts() {
 	);
 }
 
-// ═══ REPORT ══════════════════════════════════════════════════════
 async function loadReport() {
 	const report = await msg('getReport');
 	const stats = report.stats || {};
@@ -527,7 +511,6 @@ $('report-export').addEventListener('click', async () => {
 });
 $('report-refresh').addEventListener('click', loadReport);
 
-// ═══ ADVANCED ════════════════════════════════════════════════════
 $('btn-export').addEventListener('click', async () => {
 	const { config } = await msg('export');
 	download('cookie-eater-config.json', config);
@@ -556,10 +539,8 @@ $('btn-reset-all').addEventListener('click', async () => {
 	toast('🗑️ Full reset. Close and reopen the extension.', true);
 });
 
-// ── Init ─────────────────────────────────────────────────────────
 loadGeneral();
 
-// ── Utilities ────────────────────────────────────────────────────
 function download(filename, text) {
 	const a = document.createElement('a');
 	a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
