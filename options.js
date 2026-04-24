@@ -1,8 +1,10 @@
-'use strict';
+﻿'use strict';
 
 const $ = id => document.getElementById(id);
-const msg = (action, extra = {}) => new Promise(r => chrome.runtime.sendMessage({ action, ...extra }, r));
+const msg = (action, extra = {}) => new Promise(resolve => chrome.runtime.sendMessage({ action, ...extra }, resolve));
 const fmtDate = ts => new Date(ts).toLocaleString('en-US');
+
+let pendingRiskFilter = '';
 
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
@@ -31,25 +33,28 @@ function toast(text, err = false) {
 	toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
+function activatePage(page) {
+	document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+	document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+	const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
+	if (navItem) navItem.classList.add('active');
+	const pageEl = $(`page-${page}`);
+	if (pageEl) pageEl.classList.add('active');
+	loadPage(page);
+}
+
 document.querySelectorAll('.nav-item').forEach(item => {
-	item.addEventListener('click', () => {
-		document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-		document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-		item.classList.add('active');
-		const pageId = 'page-' + item.dataset.page;
-		$(pageId).classList.add('active');
-		loadPage(item.dataset.page);
-	});
+	item.addEventListener('click', () => activatePage(item.dataset.page));
 });
 
 function handleHash() {
 	const hash = location.hash.slice(1);
 	if (!hash) return;
-	const target = hash.includes('=') ? hash.split('=')[0] : hash;
-	const navItem = document.querySelector(`[data-page="${target}"]`);
-	if (navItem) navItem.click();
+	const [page, value] = hash.split('=');
+	if (!page) return;
+	if (page === 'risk' && value) pendingRiskFilter = decodeURIComponent(value);
+	activatePage(page);
 }
-handleHash();
 
 function loadPage(page) {
 	switch (page) {
@@ -86,6 +91,8 @@ function loadPage(page) {
 		case 'report':
 			loadReport();
 			break;
+		case 'advanced':
+			break;
 	}
 }
 
@@ -106,7 +113,7 @@ $('save-general').addEventListener('click', async () => {
 		else if (el.type === 'number') settings[key] = Number(el.value);
 	});
 	await msg('saveSettings', { settings });
-	toast('✅ Settings saved!');
+	toast('Settings saved.');
 });
 
 async function loadWhitelist() {
@@ -118,13 +125,14 @@ async function loadWhitelist() {
 		);
 		return;
 	}
+
 	tbody.replaceChildren(
 		...wl.map((e, i) =>
 			createEl('tr', {}, [
 				createEl('td', { className: 'mono', textContent: e.domain }),
-				createEl('td', {}, [createEl('span', { className: `badge badge-${e.type}`, textContent: e.type === 'white' ? '⬜ Whitelist' : '🔘 Greylist' })]),
-				createEl('td', { style: 'font-size:11px;color:var(--muted)', textContent: e.type === 'grey' && e.cookies?.length ? e.cookies.join(', ') : e.type === 'white' ? 'All' : '—' }),
-				createEl('td', {}, [createEl('button', { className: 'btn sm danger', textContent: '🗑 Remove', onclick: () => removeWl(i) })]),
+				createEl('td', {}, [createEl('span', { className: `badge badge-${e.type}`, textContent: e.type === 'white' ? 'Whitelist' : 'Greylist' })]),
+				createEl('td', { style: 'font-size:11px;color:var(--muted)', textContent: e.type === 'grey' && e.cookies?.length ? e.cookies.join(', ') : e.type === 'white' ? 'All' : '-' }),
+				createEl('td', {}, [createEl('button', { className: 'btn sm danger', textContent: 'Remove', onclick: () => removeWl(i) })]),
 			]),
 		),
 	);
@@ -134,36 +142,37 @@ window.removeWl = async i => {
 	const wl = await msg('getWhitelist');
 	wl.splice(i, 1);
 	await msg('saveWhitelist', { whitelist: wl });
-	toast('Entry removed');
+	toast('Entry removed.');
 	loadWhitelist();
 };
 
 $('wl-add').addEventListener('click', async () => {
 	const domain = $('wl-domain')
 		.value.trim()
+		.toLowerCase()
 		.replace(/^https?:\/\//, '')
 		.replace(/\/.*/, '');
 	const type = $('wl-type').value;
 	if (!domain) {
-		toast('Enter a domain', true);
+		toast('Enter a domain.', true);
 		return;
 	}
 	const wl = await msg('getWhitelist');
 	if (wl.find(e => e.domain === domain)) {
-		toast('Domain already exists', true);
+		toast('Domain already exists.', true);
 		return;
 	}
 	wl.push({ domain, type, cookies: [] });
 	await msg('saveWhitelist', { whitelist: wl });
 	$('wl-domain').value = '';
-	toast('✅ Added to ' + (type === 'white' ? 'whitelist' : 'greylist'));
+	toast(`Added to ${type === 'white' ? 'whitelist' : 'greylist'}.`);
 	loadWhitelist();
 });
 
 const ruleLabels = {
-	'delete-all': '🗑️ Delete all',
-	'delete-third-party': '🔎 3rd-party only',
-	'keep-all': '✅ Keep all',
+	'delete-all': 'Delete all',
+	'delete-third-party': '3rd-party only',
+	'keep-all': 'Keep all',
 };
 
 async function loadRules() {
@@ -178,7 +187,7 @@ async function loadRules() {
 			createEl('tr', {}, [
 				createEl('td', { className: 'mono', textContent: r.domain }),
 				createEl('td', { textContent: ruleLabels[r.rule] || r.rule }),
-				createEl('td', {}, [createEl('button', { className: 'btn sm danger', textContent: '🗑 Remove', onclick: () => removeRule(i) })]),
+				createEl('td', {}, [createEl('button', { className: 'btn sm danger', textContent: 'Remove', onclick: () => removeRule(i) })]),
 			]),
 		),
 	);
@@ -188,29 +197,30 @@ window.removeRule = async i => {
 	const rules = await msg('getSiteRules');
 	rules.splice(i, 1);
 	await msg('saveSiteRules', { siteRules: rules });
-	toast('Rule removed');
+	toast('Rule removed.');
 	loadRules();
 };
 
 $('rule-add').addEventListener('click', async () => {
 	const domain = $('rule-domain')
 		.value.trim()
+		.toLowerCase()
 		.replace(/^https?:\/\//, '')
 		.replace(/\/.*/, '');
 	const rule = $('rule-type').value;
 	if (!domain) {
-		toast('Enter a domain', true);
+		toast('Enter a domain.', true);
 		return;
 	}
 	const rules = await msg('getSiteRules');
 	if (rules.find(r => r.domain === domain)) {
-		toast('Rule already exists', true);
+		toast('Rule already exists.', true);
 		return;
 	}
 	rules.push({ domain, rule });
 	await msg('saveSiteRules', { siteRules: rules });
 	$('rule-domain').value = '';
-	toast('✅ Rule added');
+	toast('Rule added.');
 	loadRules();
 });
 
@@ -223,13 +233,13 @@ async function loadSchedule() {
 $('save-schedule').addEventListener('click', async () => {
 	const h = Number(document.querySelector('[data-key="scheduledCleaningIntervalHours"]')?.value || 0);
 	await msg('saveSettings', { settings: { scheduledCleaningIntervalHours: h } });
-	toast('✅ Schedule saved' + (h > 0 ? ` — clean every ${h}h` : ' — disabled'));
+	toast(`Schedule saved${h > 0 ? `: every ${h}h` : ': disabled'}.`);
 });
 
 $('clean-now').addEventListener('click', async () => {
-	toast('⏳ Running cleanup…');
-	await msg('clearAll');
-	toast('✅ Cleanup complete!');
+	toast('Running cleanup...');
+	const { count } = await msg('runScheduledClean');
+	toast(`Cleanup complete: ${count} cookies removed.`);
 });
 
 async function loadProfiles() {
@@ -238,12 +248,13 @@ async function loadProfiles() {
 	if (!profiles?.length) {
 		grid.replaceChildren(
 			createEl('div', { className: 'empty' }, [
-				createEl('div', { className: 'empty-icon', textContent: '👤' }),
+				createEl('div', { className: 'empty-icon', textContent: 'User' }),
 				createEl('div', { className: 'empty-text' }, ['No profiles saved yet.', createEl('br'), 'Save your current settings to activate them later.']),
 			]),
 		);
 		return;
 	}
+
 	grid.replaceChildren(
 		...profiles.map(p => {
 			const nameEl = createEl('div', { className: 'profile-name', textContent: p.name });
@@ -255,8 +266,8 @@ async function loadProfiles() {
 				nameEl,
 				createEl('div', { className: 'profile-date', textContent: fmtDate(p.createdAt || Date.now()) }),
 				createEl('div', { className: 'profile-actions' }, [
-					createEl('button', { className: 'btn sm primary', textContent: '▶ Load', onclick: () => loadProfile(p.id) }),
-					createEl('button', { className: 'btn sm danger', textContent: '🗑', onclick: () => deleteProfile(p.id) }),
+					createEl('button', { className: 'btn sm primary', textContent: 'Load', onclick: () => loadProfile(p.id) }),
+					createEl('button', { className: 'btn sm danger', textContent: 'Delete', onclick: () => deleteProfile(p.id) }),
 				]),
 			]);
 		}),
@@ -265,31 +276,36 @@ async function loadProfiles() {
 
 window.loadProfile = async id => {
 	await msg('loadProfile', { id });
-	toast('✅ Profile loaded!');
+	toast('Profile loaded.');
 	loadProfiles();
 };
+
 window.deleteProfile = async id => {
 	await msg('deleteProfile', { id });
-	toast('Profile deleted');
+	toast('Profile deleted.');
 	loadProfiles();
 };
 
 $('profile-save').addEventListener('click', async () => {
 	const name = $('profile-name').value.trim();
 	if (!name) {
-		toast('Enter a profile name', true);
+		toast('Enter a profile name.', true);
 		return;
 	}
 	await msg('saveProfile', { name });
 	$('profile-name').value = '';
-	toast('✅ Profile saved!');
+	toast('Profile saved.');
 	loadProfiles();
 });
 
 async function loadRisk() {
 	const scores = await msg('getAllRisks');
+	if (pendingRiskFilter) {
+		$('risk-search').value = pendingRiskFilter.toLowerCase();
+		pendingRiskFilter = '';
+	}
 	renderRisk(scores);
-	$('risk-search').addEventListener('input', () => renderRisk(scores));
+	$('risk-search').oninput = () => renderRisk(scores);
 }
 
 function renderRisk(scores) {
@@ -298,26 +314,28 @@ function renderRisk(scores) {
 		.filter(([d]) => !q || d.includes(q))
 		.sort(([, a], [, b]) => b.score - a.score);
 	const tbody = $('risk-tbody');
+
 	if (!entries.length) {
 		tbody.replaceChildren(
 			createEl('tr', {}, [createEl('td', { colSpan: '5', style: 'text-align:center;color:var(--muted);padding:24px', textContent: 'No risk data yet. Browse some sites first.' })]),
 		);
 		return;
 	}
+
 	tbody.replaceChildren(
 		...entries.map(([domain, data]) => {
 			const color = data.score >= 80 ? '#f43f5e' : data.score >= 50 ? '#f97316' : data.score >= 25 ? '#eab308' : '#22c55e';
 			const lbl = data.score >= 80 ? 'Critical' : data.score >= 50 ? 'High' : data.score >= 25 ? 'Medium' : 'Low';
 			const factorsFull = (data.factors || []).join(', ');
 			let factorsShort = (data.factors || []).slice(0, 3).join(', ');
-			if ((data.factors || []).length > 3) factorsShort += '…';
+			if ((data.factors || []).length > 3) factorsShort += '...';
 
 			return createEl('tr', {}, [
 				createEl('td', { className: 'mono', textContent: domain }),
 				createEl('td', {}, [createEl('span', { style: `font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:${color}`, textContent: data.score }), '/100']),
 				createEl('td', {}, [createEl('span', { className: 'badge', style: `color:${color};border-color:${color}40;background:${color}15`, textContent: lbl })]),
 				createEl('td', { style: 'font-size:10px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis', title: factorsFull, textContent: factorsShort }),
-				createEl('td', { className: 'mono', style: 'font-size:10px;color:var(--muted)', textContent: data.lastUpdated ? fmtDate(data.lastUpdated) : '—' }),
+				createEl('td', { className: 'mono', style: 'font-size:10px;color:var(--muted)', textContent: data.lastUpdated ? fmtDate(data.lastUpdated) : '-' }),
 			]);
 		}),
 	);
@@ -326,15 +344,14 @@ function renderRisk(scores) {
 $('risk-clear').addEventListener('click', async () => {
 	if (!confirm('Clear all risk scores?')) return;
 	await msg('clearRisks');
-	toast('Scores cleared');
+	toast('Scores cleared.');
 	loadRisk();
 });
 
 async function loadTrackers() {
 	const map = await msg('getTrackerMap');
-	const q_el = $('tracker-search');
 	renderTrackers(map);
-	q_el.addEventListener('input', () => renderTrackers(map));
+	$('tracker-search').oninput = () => renderTrackers(map);
 }
 
 function renderTrackers(map) {
@@ -347,7 +364,7 @@ function renderTrackers(map) {
 	if (!entries.length) {
 		el.replaceChildren(
 			createEl('div', { className: 'empty' }, [
-				createEl('div', { className: 'empty-icon', textContent: '🗺️' }),
+				createEl('div', { className: 'empty-icon', textContent: 'Map' }),
 				createEl('div', { className: 'empty-text' }, ['No trackers detected yet.', createEl('br'), 'Browse some sites to populate the map.']),
 			]),
 		);
@@ -363,14 +380,15 @@ function renderTrackers(map) {
 					createEl('div', { className: 'tracker-bar' }, [
 						createEl('span', { className: 'tracker-name', textContent: t }),
 						createEl('div', { className: 'tracker-bar-fill', style: `width:${Math.min(120, n * 8)}px` }),
-						createEl('span', { className: 'tracker-count', textContent: `${n}×` }),
+						createEl('span', { className: 'tracker-count', textContent: `${n}x` }),
 					]),
 				);
+
 			return createEl('div', { className: 'card', style: 'margin-bottom:12px' }, [
 				createEl('div', { className: 'card-title', style: 'margin-bottom:12px' }, [
 					site,
 					' ',
-					createEl('span', { style: "font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace", textContent: `${Object.keys(trackers).length} trackers · ${total} requests` }),
+					createEl('span', { style: "font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace", textContent: `${Object.keys(trackers).length} trackers - ${total} requests` }),
 				]),
 				...bars,
 			]);
@@ -382,15 +400,16 @@ async function loadHoneypots() {
 	const list = await msg('getHoneypots');
 	const tbody = $('honeypot-tbody');
 	if (!list.length) {
-		tbody.replaceChildren(createEl('tr', {}, [createEl('td', { colSpan: '4', style: 'text-align:center;color:var(--muted);padding:24px', textContent: '🎉 No honeypots detected. Nice!' })]));
+		tbody.replaceChildren(createEl('tr', {}, [createEl('td', { colSpan: '4', style: 'text-align:center;color:var(--muted);padding:24px', textContent: 'No honeypots detected. Nice.' })]));
 		return;
 	}
+
 	tbody.replaceChildren(
 		...list.map(h =>
 			createEl('tr', {}, [
 				createEl('td', { className: 'mono', textContent: h.domain }),
 				createEl('td', { className: 'mono', style: 'color:var(--yellow)', textContent: h.name }),
-				createEl('td', { className: 'mono', style: 'color:var(--muted)', textContent: h.value || '—' }),
+				createEl('td', { className: 'mono', style: 'color:var(--muted)', textContent: h.value || '-' }),
 				createEl('td', { className: 'mono', style: 'font-size:10px;color:var(--muted)', textContent: fmtDate(h.detected) }),
 			]),
 		),
@@ -400,18 +419,20 @@ async function loadHoneypots() {
 async function loadAudit() {
 	const log = await msg('getAuditLog', { limit: 300 });
 	renderAudit(log);
-	$('audit-search').addEventListener('input', () => renderAudit(log));
+	$('audit-search').oninput = () => renderAudit(log);
 }
 
 function renderAudit(log) {
 	const q = $('audit-search').value.toLowerCase();
 	const filtered = log.filter(e => !q || e.domain?.includes(q) || e.action?.includes(q) || e.name?.includes(q));
 	const el = $('audit-list');
+
 	if (!filtered.length) {
 		el.replaceChildren(createEl('div', { style: 'padding:20px;text-align:center;color:var(--muted)', textContent: 'No entries found.' }));
 		return;
 	}
-	const cls = a => (a.includes('delete') || a.includes('deleted') ? 'deleted' : a.includes('set') ? 'set' : a.includes('banner') ? 'banner' : a.includes('scheduled') ? 'scheduled' : 'other');
+
+	const cls = action => (action.includes('delete') || action.includes('deleted') ? 'deleted' : action.includes('set') ? 'set' : action.includes('banner') ? 'banner' : action.includes('scheduled') ? 'scheduled' : 'other');
 
 	el.replaceChildren(
 		...filtered.map(e => {
@@ -432,14 +453,14 @@ function renderAudit(log) {
 $('audit-clear').addEventListener('click', async () => {
 	if (!confirm('Clear the audit log?')) return;
 	await msg('clearAuditLog');
-	toast('Log cleared');
+	toast('Log cleared.');
 	loadAudit();
 });
 
 $('audit-export').addEventListener('click', async () => {
 	const log = await msg('getAuditLog', { limit: 1000 });
 	download('audit-log.json', JSON.stringify(log, null, 2));
-	toast('📥 Log exported');
+	toast('Log exported.');
 });
 
 async function loadReceipts() {
@@ -453,13 +474,14 @@ async function loadReceipts() {
 		);
 		return;
 	}
+
 	tbody.replaceChildren(
 		...list.map(r =>
 			createEl('tr', {}, [
 				createEl('td', { className: 'mono', textContent: r.domain }),
 				createEl('td', { className: 'mono', style: 'font-size:11px', textContent: fmtDate(r.ts) }),
 				createEl('td', {}, [createEl('span', { className: 'badge badge-Functional', textContent: r.bannerType || 'auto' })]),
-				createEl('td', { style: 'font-size:10px;color:var(--muted)', textContent: r.proof || '—' }),
+				createEl('td', { style: 'font-size:10px;color:var(--muted)', textContent: r.proof || '-' }),
 			]),
 		),
 	);
@@ -468,20 +490,21 @@ async function loadReceipts() {
 async function loadReport() {
 	const report = await msg('getReport');
 	const stats = report.stats || {};
+	const detectedTrackers = stats.trackersDetected ?? stats.trackersBlocked ?? 0;
 
 	const statData = [
-		{ n: stats.cookiesDeleted || 0, l: 'Cookies removed', i: '🍪' },
-		{ n: stats.trackersBlocked || 0, l: 'Trackers blocked', i: '🚫' },
-		{ n: stats.bannersRejected || 0, l: 'Banners rejected', i: '📋' },
-		{ n: stats.domainsProtected || 0, l: 'Protected domains', i: '🛡️' },
-		{ n: report.summary?.highRiskDomains || 0, l: 'High risk sites', i: '⚠️' },
-		{ n: report.summary?.honeypots || 0, l: 'Honeypots found', i: '🍯' },
+		{ n: stats.cookiesDeleted || 0, l: 'Cookies removed', i: 'Cookies' },
+		{ n: detectedTrackers, l: 'Tracker requests', i: 'Trackers' },
+		{ n: stats.trackersBlocked || 0, l: 'Tracker blocks', i: 'Blocked' },
+		{ n: stats.bannersRejected || 0, l: 'Banners rejected', i: 'Banners' },
+		{ n: stats.domainsProtected || 0, l: 'Protected domains', i: 'Domains' },
+		{ n: report.summary?.highRiskDomains || 0, l: 'High risk sites', i: 'Risk' },
 	];
 
 	$('report-stats').replaceChildren(
 		...statData.map(s =>
 			createEl('div', { className: 'stat-card' }, [
-				createEl('div', { style: 'font-size:24px', textContent: s.i }),
+				createEl('div', { style: 'font-size:12px;color:var(--muted);font-family:"JetBrains Mono",monospace', textContent: s.i }),
 				createEl('div', { className: 'stat-num', textContent: s.n }),
 				createEl('div', { className: 'stat-name', textContent: s.l }),
 			]),
@@ -497,49 +520,63 @@ async function loadReport() {
 				createEl('div', { className: 'tracker-bar' }, [
 					createEl('span', { className: 'tracker-name', textContent: t.d }),
 					createEl('div', { className: 'tracker-bar-fill', style: `width:${Math.round((t.n / max) * 180)}px` }),
-					createEl('span', { className: 'tracker-count', textContent: `${t.n}×` }),
+					createEl('span', { className: 'tracker-count', textContent: `${t.n}x` }),
 				]),
 			),
 		);
+	} else {
+		$('report-trackers-card').style.display = 'none';
 	}
 }
 
 $('report-export').addEventListener('click', async () => {
 	const report = await msg('getReport');
 	download('privacy-report.json', JSON.stringify(report, null, 2));
-	toast('📥 Report exported');
+	toast('Report exported.');
 });
 $('report-refresh').addEventListener('click', loadReport);
 
 $('btn-export').addEventListener('click', async () => {
 	const { config } = await msg('export');
 	download('cookie-eater-config.json', config);
-	toast('📤 Configuration exported');
+	toast('Configuration exported.');
 });
 
 $('btn-import').addEventListener('click', async () => {
 	const config = $('import-json').value.trim();
 	if (!config) {
-		toast('Paste JSON before importing', true);
+		toast('Paste JSON before importing.', true);
 		return;
 	}
 	const res = await msg('import', { config });
 	if (res?.error) {
-		toast('❌ Error: ' + res.error, true);
+		toast('Error: ' + res.error, true);
 		return;
 	}
 	$('import-json').value = '';
-	toast('✅ Configuration imported successfully!');
+	toast('Configuration imported successfully.');
 	loadGeneral();
 });
 
 $('btn-reset-all').addEventListener('click', async () => {
-	if (!confirm('⚠️ WARNING: This will delete ALL settings, whitelists, rules, profiles, stats and logs. Are you sure?')) return;
-	await chrome.storage.local.clear();
-	toast('🗑️ Full reset. Close and reopen the extension.', true);
+	if (!confirm('WARNING: This will delete ALL settings, whitelists, rules, profiles, stats and logs. Are you sure?')) return;
+	const result = await msg('resetAll');
+	if (!result?.ok) {
+		toast('Unable to reset extension.', true);
+		return;
+	}
+	toast('Full reset complete.');
+	loadGeneral();
+	loadWhitelist();
+	loadRules();
+	loadProfiles();
+	loadRisk();
+	loadTrackers();
+	loadHoneypots();
+	loadAudit();
+	loadReceipts();
+	loadReport();
 });
-
-loadGeneral();
 
 function download(filename, text) {
 	const a = document.createElement('a');
@@ -547,3 +584,14 @@ function download(filename, text) {
 	a.download = filename;
 	a.click();
 }
+
+function setVersionBadge() {
+	const el = $('app-version');
+	if (!el) return;
+	el.textContent = `v${chrome.runtime.getManifest().version} - Settings`;
+}
+
+setVersionBadge();
+handleHash();
+if (!location.hash) activatePage('general');
+

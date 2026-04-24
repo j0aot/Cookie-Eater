@@ -1,11 +1,7 @@
-(function () {
+﻿(function () {
 	'use strict';
 
-	chrome.storage.local.get('settings', ({ settings }) => {
-		if (settings?.enabled === false) return;
-		init();
-	});
-
+	const DEBUG = false;
 
 	const BANNER_SELECTORS = [
 		'#didomi-host',
@@ -21,11 +17,14 @@
 	];
 
 	const REJECT_TEXTS = [
+		'nao aceito nenhum',
 		'não aceito nenhum',
 		'rejeitar tudo',
 		'rejeitar todos',
 		'recusar tudo',
+		'nao aceitar',
 		'não aceitar',
+		'apenas necessarios',
 		'apenas necessários',
 		'reject all',
 		'decline all',
@@ -36,16 +35,59 @@
 		'reject',
 	];
 
-	const SAVE_TEXTS = ['guardar', 'gravar', 'salvar', 'confirmar minhas escolhas', 'guardar alterações', 'save', 'save preferences', 'save changes', 'submit preferences'];
+	const SAVE_TEXTS = [
+		'guardar',
+		'gravar',
+		'salvar',
+		'confirmar minhas escolhas',
+		'guardar alteracoes',
+		'guardar alterações',
+		'save',
+		'save preferences',
+		'save changes',
+		'submit preferences',
+	];
 
-	const PREFS_TEXTS = ['saiba mais', 'saber mais', 'gerir cookies', 'personalizar', 'definições', 'preferências', 'manage cookies', 'cookie settings'];
-
+	const PREFS_TEXTS = [
+		'saiba mais',
+		'saber mais',
+		'gerir cookies',
+		'personalizar',
+		'definicoes',
+		'definições',
+		'preferencias',
+		'preferências',
+		'manage cookies',
+		'cookie settings',
+	];
 
 	let isProcessing = false;
 	let bannerReported = false;
+	let queueTimer = null;
 
-	function log(msg, el) {
-		console.log(`[Cookie Eater] ${msg}`, el || '');
+	bootstrap();
+
+	async function bootstrap() {
+		const settings = await getSettings();
+		if (settings.enabled === false) return;
+		init();
+	}
+
+	async function getSettings() {
+		const [syncData, localData] = await Promise.all([
+			new Promise(resolve => chrome.storage.sync.get('settings', resolve)),
+			new Promise(resolve => chrome.storage.local.get('settings', resolve)),
+		]);
+
+		return {
+			enabled: true,
+			...(localData?.settings || {}),
+			...(syncData?.settings || {}),
+		};
+	}
+
+	function log(...args) {
+		if (DEBUG) console.debug('[Cookie Eater]', ...args);
 	}
 
 	function getActiveBanner() {
@@ -64,7 +106,10 @@
 	}
 
 	function textOf(el) {
-		return (el.innerText || el.textContent || el.getAttribute('aria-label') || '').toLowerCase().trim().replace(/\s+/g, ' ');
+		return (el.innerText || el.textContent || el.getAttribute('aria-label') || '')
+			.toLowerCase()
+			.trim()
+			.replace(/\s+/g, ' ');
 	}
 
 	function forceClick(el) {
@@ -75,43 +120,52 @@
 		});
 	}
 
+	function reportRejection(kind = 'auto') {
+		if (bannerReported) return;
+		bannerReported = true;
+		try {
+			chrome.runtime.sendMessage({
+				action: 'rejected',
+				site: window.location.hostname.replace(/^www\./, ''),
+				bannerType: kind,
+			});
+		} catch (_) {}
+	}
+
 	function run() {
-		if (isProcessing) return;
+		if (isProcessing) return false;
 
 		const activeBanner = getActiveBanner();
-		if (!activeBanner) return;
-
+		if (!activeBanner) return false;
 
 		const allButtons = activeBanner.querySelectorAll("button, [role='button'], span, div[class*='btn']");
 		let saveBtn = null;
 
 		for (const el of allButtons) {
 			const txt = textOf(el);
-			if (SAVE_TEXTS.includes(txt) && isElementVisible(el)) {
-				if (!el.disabled && el.getAttribute('aria-disabled') !== 'true') {
-					saveBtn = el;
-					break;
-				}
+			if (SAVE_TEXTS.includes(txt) && isElementVisible(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true') {
+				saveBtn = el;
+				break;
 			}
 		}
 
 		if (saveBtn) {
-			log('Final Step: Saving changes', saveBtn);
+			log('Final step: saving changes', saveBtn);
 			isProcessing = true;
 			forceClick(saveBtn);
+			reportRejection('save');
 			setTimeout(() => {
 				isProcessing = false;
 			}, 2000);
-			return;
+			return true;
 		}
 
 		let clickedSomething = false;
 		for (const el of allButtons) {
 			if (el.tagName === 'A' && el.getAttribute('href') && !el.getAttribute('href').startsWith('#')) continue;
-
 			const txt = textOf(el);
 			if (REJECT_TEXTS.includes(txt) && isElementVisible(el)) {
-				log('Toggling Reject option', el);
+				log('Toggling reject option', el);
 				forceClick(el);
 				clickedSomething = true;
 			}
@@ -119,10 +173,11 @@
 
 		if (clickedSomething) {
 			isProcessing = true;
+			reportRejection('reject');
 			setTimeout(() => {
 				isProcessing = false;
 			}, 500);
-			return;
+			return true;
 		}
 
 		for (const el of allButtons) {
@@ -134,16 +189,38 @@
 				setTimeout(() => {
 					isProcessing = false;
 				}, 1000);
-				return;
+				return true;
 			}
 		}
+
+		return false;
+	}
+
+	function queueRun(delay = 120) {
+		if (queueTimer) return;
+		queueTimer = setTimeout(() => {
+			queueTimer = null;
+			run();
+		}, delay);
 	}
 
 	function init() {
-		log('Surgical Scanner initialized.');
-		setInterval(run, 1000);
+		log('Surgical scanner initialized.');
+		queueRun(50);
+		queueRun(800);
+		queueRun(1800);
 
-		const obs = new MutationObserver(run);
-		obs.observe(document.documentElement, { childList: true, subtree: true });
+		const observer = new MutationObserver(() => queueRun(100));
+		observer.observe(document.documentElement, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['class', 'style', 'aria-hidden', 'hidden'],
+		});
+
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) queueRun(120);
+		});
 	}
 })();
+

@@ -1,5 +1,4 @@
-
-'use strict';
+﻿'use strict';
 
 const TRACKER_DOMAINS = [
 	'google-analytics.com',
@@ -54,6 +53,7 @@ const DEFAULT_SETTINGS = {
 
 const DEFAULT_STATS = {
 	cookiesDeleted: 0,
+	trackersDetected: 0,
 	trackersBlocked: 0,
 	bannersRejected: 0,
 	domainsProtected: 0,
@@ -62,53 +62,19 @@ const DEFAULT_STATS = {
 	lastReset: Date.now(),
 };
 
-const tabDomains = new Map();
-
-
-chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-	if (reason === 'install') {
-		await store({
-			settings: DEFAULT_SETTINGS,
-			stats: DEFAULT_STATS,
-			whitelist: [],
-			siteRules: [],
-			profiles: [],
-			activeProfile: null,
-			auditLog: [],
-			trackerMap: {},
-			riskScores: {},
-			consentReceipts: [],
-			honeypots: [],
-		});
-	}
-	setupContextMenus();
-	setupAlarms();
-});
-
-chrome.runtime.onStartup.addListener(async () => {
-	setupAlarms();
-	await incrementStat('sessionsStarted');
-	const { settings, stats } = await load(['settings', 'stats']);
-	if (settings?.showStartupReport) showStartupReport(stats);
-});
-
-
-
 const SYNC_KEYS = ['settings', 'whitelist', 'siteRules', 'profiles', 'activeProfile'];
+const tabDomains = new Map();
 
 const load = keys =>
 	new Promise(resolve => {
 		const keysArray = Array.isArray(keys) ? keys : [keys];
-
 		const syncKeys = keysArray.filter(k => SYNC_KEYS.includes(k));
 		const localKeys = keysArray.filter(k => !SYNC_KEYS.includes(k));
 
 		Promise.all([
 			syncKeys.length ? new Promise(r => chrome.storage.sync.get(syncKeys, r)) : Promise.resolve({}),
 			localKeys.length ? new Promise(r => chrome.storage.local.get(localKeys, r)) : Promise.resolve({}),
-		]).then(([syncData, localData]) => {
-			resolve({ ...syncData, ...localData });
-		});
+		]).then(([syncData, localData]) => resolve({ ...syncData, ...localData }));
 	});
 
 const store = data =>
@@ -127,109 +93,225 @@ const store = data =>
 		]).then(resolve);
 	});
 
+const clearStorageArea = area => new Promise(resolve => area.clear(() => resolve()));
+const objectsEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+function defaultState() {
+	return {
+		settings: { ...DEFAULT_SETTINGS },
+		stats: { ...DEFAULT_STATS, lastReset: Date.now() },
+		whitelist: [],
+		siteRules: [],
+		profiles: [],
+		activeProfile: null,
+		auditLog: [],
+		trackerMap: {},
+		riskScores: {},
+		consentReceipts: [],
+		honeypots: [],
+	};
+}
+
+function normalizeSettings(settings) {
+	return { ...DEFAULT_SETTINGS, ...(settings || {}) };
+}
+
+function normalizeStats(stats) {
+	const incoming = stats || {};
+	const merged = { ...DEFAULT_STATS, ...incoming };
+
+	if (incoming.trackersDetected == null && typeof incoming.trackersBlocked === 'number') {
+		merged.trackersDetected = incoming.trackersBlocked;
+	}
+	if (typeof merged.lastReset !== 'number') {
+		merged.lastReset = Date.now();
+	}
+	return merged;
+}
+
+async function ensureDefaults() {
+	const data = await load(['settings', 'stats']);
+	const mergedSettings = normalizeSettings(data.settings);
+	const mergedStats = normalizeStats(data.stats);
+
+	const writes = {};
+	if (!objectsEqual(data.settings || {}, mergedSettings)) writes.settings = mergedSettings;
+	if (!objectsEqual(data.stats || {}, mergedStats)) writes.stats = mergedStats;
+	if (Object.keys(writes).length) await store(writes);
+
+	return { settings: mergedSettings, stats: mergedStats };
+}
+
 async function incrementStat(key, n = 1) {
 	const { stats } = await load('stats');
-	const s = { ...(stats || DEFAULT_STATS) };
+	const s = normalizeStats(stats);
 	s[key] = (s[key] || 0) + n;
 	await store({ stats: s });
+	return s[key];
 }
 
-
-function setupContextMenus() {
-	chrome.contextMenus.removeAll(() => {
-		const items = [
-			{ id: 'clear-cookies', title: '🍪 Clear cookies for this domain', contexts: ['page', 'link'] },
-			{ id: 'whitelist-domain', title: '✅ Add to whitelist', contexts: ['page'] },
-			{ id: 'greylist-domain', title: '🔘 Add to greylist', contexts: ['page'] },
-			{ id: 'view-risk', title: '🛡️ View privacy score', contexts: ['page'] },
-			{ id: 'open-settings', title: '⚙️ Open settings', contexts: ['page'] },
-		];
-		items.forEach(i => chrome.contextMenus.create(i));
+const contextMenusRemoveAll = () =>
+	new Promise(resolve => {
+		chrome.contextMenus.removeAll(() => resolve());
 	});
-}
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-	if (!tab?.url) return;
-	const domain = host(tab.url);
-	switch (info.menuItemId) {
-		case 'clear-cookies':
-			const n = await clearDomainCookies(domain, tab.url);
-			notify('🍪 Cookies cleared', `${n} cookies removed from ${domain}`);
-			break;
-		case 'whitelist-domain':
-			await upsertWhitelist(domain, 'white');
-			notify('✅ Whitelist', `${domain} added to whitelist.`);
-			break;
-		case 'greylist-domain':
-			await upsertWhitelist(domain, 'grey');
-			notify('🔘 Greylist', `${domain} added to greylist.`);
-			break;
-		case 'view-risk':
-			chrome.tabs.create({ url: `chrome-extension://${chrome.runtime.id}/options.html#risk=${domain}` });
-			break;
-		case 'open-settings':
-			chrome.tabs.create({ url: `chrome-extension://${chrome.runtime.id}/options.html` });
-			break;
+const contextMenusCreate = item =>
+	new Promise(resolve => {
+		chrome.contextMenus.create(item, () => resolve());
+	});
+
+async function setupContextMenus() {
+	await contextMenusRemoveAll();
+	const { settings } = await load('settings');
+	const s = normalizeSettings(settings);
+	if (!s.contextMenuEnabled) return;
+
+	const items = [
+		{ id: 'clear-cookies', title: 'Clear cookies for this domain', contexts: ['page', 'link'] },
+		{ id: 'whitelist-domain', title: 'Add to whitelist', contexts: ['page'] },
+		{ id: 'greylist-domain', title: 'Add to greylist', contexts: ['page'] },
+		{ id: 'view-risk', title: 'View privacy score', contexts: ['page'] },
+		{ id: 'open-settings', title: 'Open settings', contexts: ['page'] },
+	];
+
+	for (const item of items) {
+		await contextMenusCreate(item);
 	}
-});
-
+}
 
 async function setupAlarms() {
 	chrome.alarms.clear('scheduled-clean');
 	const { settings } = await load('settings');
-	const h = settings?.scheduledCleaningIntervalHours || 0;
+	const h = normalizeSettings(settings).scheduledCleaningIntervalHours || 0;
 	if (h > 0) chrome.alarms.create('scheduled-clean', { periodInMinutes: h * 60 });
 }
 
-chrome.alarms.onAlarm.addListener(async ({ name }) => {
-	if (name === 'scheduled-clean') await scheduledClean();
-});
-
-async function scheduledClean() {
+async function scheduledClean({ notifyUser = true } = {}) {
 	const all = await chrome.cookies.getAll({});
 	const { whitelist, siteRules } = await load(['whitelist', 'siteRules']);
 	let deleted = 0;
+
 	for (const c of all) {
 		const d = c.domain.replace(/^\./, '');
 		if (await isWhitelisted(d, c.name, whitelist)) continue;
 		const rule = getSiteRule(d, siteRules);
 		if (rule === 'keep-all') continue;
-		await removeCookie(c);
-		deleted++;
+		if (await removeCookie(c)) deleted++;
 	}
-	await incrementStat('cookiesDeleted', deleted);
+
+	if (deleted > 0) await incrementStat('cookiesDeleted', deleted);
 	await audit('scheduled-clean', 'all', `${deleted} cookies`);
-	notify('📅 Scheduled cleaning', `${deleted} cookies automatically removed.`);
+	if (notifyUser) notify('Scheduled cleaning', `${deleted} cookies automatically removed.`);
+	return { count: deleted };
 }
 
+chrome.runtime.onInstalled.addListener(async () => {
+	const { settings, stats, ...rest } = defaultState();
+	const existing = await load(['settings', 'stats', 'whitelist', 'siteRules', 'profiles', 'activeProfile', 'auditLog', 'trackerMap', 'riskScores', 'consentReceipts', 'honeypots']);
+	const bootstrap = {
+		settings: normalizeSettings(existing.settings || settings),
+		stats: normalizeStats(existing.stats || stats),
+		whitelist: existing.whitelist || rest.whitelist,
+		siteRules: existing.siteRules || rest.siteRules,
+		profiles: existing.profiles || rest.profiles,
+		activeProfile: existing.activeProfile || rest.activeProfile,
+		auditLog: existing.auditLog || rest.auditLog,
+		trackerMap: existing.trackerMap || rest.trackerMap,
+		riskScores: existing.riskScores || rest.riskScores,
+		consentReceipts: existing.consentReceipts || rest.consentReceipts,
+		honeypots: existing.honeypots || rest.honeypots,
+	};
+
+	await store(bootstrap);
+	await setupContextMenus();
+	await setupAlarms();
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+	const { settings, stats } = await ensureDefaults();
+	await setupContextMenus();
+	await setupAlarms();
+	await incrementStat('sessionsStarted');
+	if (settings.showStartupReport) showStartupReport(stats);
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+	if (!tab?.url) return;
+	const domain = host(tab.url);
+	const optionsUrl = chrome.runtime.getURL('options.html');
+
+	switch (info.menuItemId) {
+		case 'clear-cookies': {
+			const n = await clearDomainCookies(domain, tab.url);
+			notify('Cookies cleared', `${n} cookies removed from ${domain}`);
+			break;
+		}
+		case 'whitelist-domain':
+			await upsertWhitelist(domain, 'white');
+			notify('Whitelist', `${domain} added to whitelist.`);
+			break;
+		case 'greylist-domain':
+			await upsertWhitelist(domain, 'grey');
+			notify('Greylist', `${domain} added to greylist.`);
+			break;
+		case 'view-risk':
+			chrome.tabs.create({ url: `${optionsUrl}#risk=${encodeURIComponent(domain)}` });
+			break;
+		case 'open-settings':
+			chrome.tabs.create({ url: optionsUrl });
+			break;
+	}
+});
+
+chrome.alarms.onAlarm.addListener(async ({ name }) => {
+	if (name === 'scheduled-clean') await scheduledClean({ notifyUser: true });
+});
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-	if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) return;
+	if (!tab.url) return;
+	if (/^(chrome|about|moz-extension|chrome-extension|edge):/.test(tab.url)) return;
 	if (changeInfo.status !== 'complete' && !changeInfo.url) return;
+
 	const domain = host(tab.url);
 	tabDomains.set(tabId, { domain, url: tab.url });
+
 	const { settings } = await load('settings');
-	if (settings?.showBadgeCount) updateBadge(tabId, domain);
-	if (settings?.autoIncognitoThreshold > 0) checkAutoIncognito(tab, domain, settings.autoIncognitoThreshold);
+	const s = normalizeSettings(settings);
+	if (s.showBadgeCount) await updateBadge(tabId, domain);
+	else chrome.action.setBadgeText({ tabId, text: '' });
+
+	if (s.enabled && s.autoIncognitoThreshold > 0) {
+		checkAutoIncognito(tab, domain, s.autoIncognitoThreshold);
+	}
 });
 
 chrome.tabs.onRemoved.addListener(async tabId => {
 	const info = tabDomains.get(tabId);
 	tabDomains.delete(tabId);
 	if (!info) return;
+
 	const { settings, whitelist, siteRules } = await load(['settings', 'whitelist', 'siteRules']);
-	if (!settings?.enabled || !settings?.autoDeleteOnTabClose) return;
+	const s = normalizeSettings(settings);
+	if (!s.enabled || !s.autoDeleteOnTabClose) return;
+
 	const { domain, url } = info;
 	if (await isWhitelisted(domain, '*', whitelist)) return;
 	const rule = getSiteRule(domain, siteRules);
 	if (rule === 'keep-all') return;
+
 	const tabs = await chrome.tabs.query({});
 	if (tabs.some(t => t.url && host(t.url) === domain)) return;
+
 	const n = await clearDomainCookies(domain, url, whitelist, rule);
 	if (n > 0) await incrementStat('domainsProtected');
 });
 
 async function updateBadge(tabId, domain) {
+	if (!domain) {
+		chrome.action.setBadgeText({ text: '', tabId });
+		return;
+	}
+
 	try {
 		const cookies = await chrome.cookies.getAll({ domain });
 		const n = cookies.length;
@@ -247,42 +329,77 @@ async function clearDomainCookies(domain, url, whitelist, rule) {
 		const { siteRules } = await load('siteRules');
 		rule = getSiteRule(domain, siteRules);
 	}
+
 	const cookies = await chrome.cookies.getAll({ domain });
 	let deleted = 0;
+
 	for (const c of cookies) {
 		const cd = c.domain.replace(/^\./, '');
 		if (await isWhitelisted(cd, c.name, whitelist || [])) continue;
 		if (rule === 'keep-all') continue;
 		if (rule === 'delete-third-party' && cd === domain) continue;
-		await removeCookie(c, url);
-		await audit('deleted', cd, c.name);
-		deleted++;
+
+		if (await removeCookie(c, url)) {
+			await audit('deleted', cd, c.name);
+			deleted++;
+		}
 	}
+
 	if (deleted > 0) await incrementStat('cookiesDeleted', deleted);
 	return deleted;
 }
 
-async function removeCookie(cookie, url) {
-	const base = `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`;
-	const tryUrl = url || base;
-	try {
-		await chrome.cookies.remove({ url: tryUrl, name: cookie.name });
-	} catch (_) {
+function buildCookieRemovalUrls(cookie, fallbackUrl) {
+	const urls = new Set();
+	const domain = cookie.domain.replace(/^\./, '');
+	const path = cookie.path && cookie.path.startsWith('/') ? cookie.path : '/';
+
+	if (fallbackUrl) {
 		try {
-			await chrome.cookies.remove({ url: base, name: cookie.name });
-		} catch (__) {}
+			const u = new URL(fallbackUrl);
+			u.hostname = domain;
+			u.pathname = path;
+			u.search = '';
+			u.hash = '';
+			urls.add(u.toString());
+		} catch (_) {}
 	}
+
+	if (cookie.secure) {
+		urls.add(`https://${domain}${path}`);
+	} else {
+		urls.add(`https://${domain}${path}`);
+		urls.add(`http://${domain}${path}`);
+	}
+
+	return [...urls];
+}
+
+async function removeCookie(cookie, url) {
+	const candidates = buildCookieRemovalUrls(cookie, url);
+	for (const candidate of candidates) {
+		try {
+			const removed = await chrome.cookies.remove({
+				url: candidate,
+				name: cookie.name,
+				storeId: cookie.storeId,
+			});
+			if (removed) return true;
+		} catch (_) {}
+	}
+	return false;
 }
 
 chrome.cookies.onChanged.addListener(async ({ removed, cookie }) => {
 	if (removed) return;
 	const { settings } = await load('settings');
-	if (!settings?.enabled) return;
-	const domain = cookie.domain.replace(/^\./, '');
+	const s = normalizeSettings(settings);
+	if (!s.enabled) return;
 
+	const domain = cookie.domain.replace(/^\./, '');
 	await audit('set', domain, cookie.name);
 
-	const maxDays = settings?.maxCookieLifetimeDays || 0;
+	const maxDays = s.maxCookieLifetimeDays || 0;
 	if (maxDays > 0 && cookie.expirationDate) {
 		const maxTs = Date.now() / 1000 + maxDays * 86400;
 		if (cookie.expirationDate > maxTs) {
@@ -295,7 +412,7 @@ chrome.cookies.onChanged.addListener(async ({ removed, cookie }) => {
 		await updateRisk(domain, `${cat}: ${cookie.name}`);
 	}
 
-	detectHoneypot(cookie, domain);
+	await detectHoneypot(cookie, domain);
 });
 
 async function isWhitelisted(domain, cookieName, whitelist) {
@@ -309,20 +426,20 @@ async function isWhitelisted(domain, cookieName, whitelist) {
 }
 
 async function upsertWhitelist(domain, type, cookies = []) {
+	const normalizedDomain = domain.toLowerCase();
 	const { whitelist } = await load('whitelist');
 	const wl = [...(whitelist || [])];
-	const idx = wl.findIndex(e => e.domain === domain);
-	if (idx >= 0) wl[idx] = { domain, type, cookies };
-	else wl.push({ domain, type, cookies });
+	const idx = wl.findIndex(e => e.domain === normalizedDomain);
+	if (idx >= 0) wl[idx] = { domain: normalizedDomain, type, cookies };
+	else wl.push({ domain: normalizedDomain, type, cookies });
 	await store({ whitelist: wl });
 }
 
-
 function getSiteRule(domain, siteRules) {
-	const r = (siteRules || []).find(r => domain === r.domain || domain.endsWith('.' + r.domain));
+	const d = domain.toLowerCase();
+	const r = (siteRules || []).find(rule => d === rule.domain || d.endsWith('.' + rule.domain));
 	return r?.rule || null;
 }
-
 
 async function audit(action, domain, name = '', value = '') {
 	const { auditLog } = await load('auditLog');
@@ -330,7 +447,6 @@ async function audit(action, domain, name = '', value = '') {
 	if (log.length > 1000) log.length = 1000;
 	await store({ auditLog: log });
 }
-
 
 async function updateRisk(domain, factor) {
 	const { riskScores } = await load('riskScores');
@@ -351,31 +467,32 @@ function riskLabel(score) {
 	return { label: 'Low', color: '#10b981' };
 }
 
-
 async function detectHoneypot(cookie, domain) {
 	const { value = '', name } = cookie;
 	const longRandom = value.length >= 32 && /^[a-f0-9\-_=+/A-Z]{32,}$/.test(value);
 	const suspiciousName = /^_[a-z]{2,8}$/.test(name) || /^__[a-z_]+$/.test(name);
 	if (!longRandom || !suspiciousName) return;
+
 	const { honeypots } = await load('honeypots');
 	const list = honeypots || [];
 	if (list.find(h => h.domain === domain && h.name === name)) return;
-	list.unshift({ domain, name, detected: Date.now(), value: value.slice(0, 16) + '…' });
+
+	list.unshift({ domain, name, detected: Date.now(), value: value.slice(0, 16) + '...' });
 	if (list.length > 200) list.length = 200;
 	await store({ honeypots: list });
 	await updateRisk(domain, `Suspicious honeypot: ${name}`);
 }
-
 
 async function checkAutoIncognito(tab, domain, threshold) {
 	if (tab.incognito) return;
 	const { riskScores } = await load('riskScores');
 	const score = riskScores?.[domain]?.score || 0;
 	if (score < threshold) return;
+
 	chrome.notifications.create(`incognito-${tab.id}`, {
 		type: 'basic',
 		iconUrl: 'icons/icon48.png',
-		title: '⚠️ High risk site detected',
+		title: 'High risk site detected',
 		message: `${domain} has a score of ${score}/100. Open in incognito mode?`,
 		buttons: [{ title: 'Open incognito' }, { title: 'Ignore' }],
 		requireInteraction: true,
@@ -384,62 +501,92 @@ async function checkAutoIncognito(tab, domain, threshold) {
 
 chrome.notifications.onButtonClicked.addListener(async (id, btnIdx) => {
 	if (id.startsWith('incognito-') && btnIdx === 0) {
-		const tabId = parseInt(id.split('-')[1]);
+		const tabId = Number.parseInt(id.split('-')[1], 10);
 		const tab = await chrome.tabs.get(tabId).catch(() => null);
 		if (tab) chrome.windows.create({ incognito: true, url: tab.url });
 	}
 	chrome.notifications.clear(id);
 });
 
+function isTrackerDomain(domain) {
+	return TRACKER_DOMAINS.some(t => domain === t || domain.endsWith('.' + t));
+}
+
+async function resolveTrackerContext(details) {
+	if (details.type === 'main_frame' || details.tabId < 0) return null;
+	const trackerDomain = host(details.url);
+	if (!isTrackerDomain(trackerDomain)) return null;
+
+	const tab = await chrome.tabs.get(details.tabId).catch(() => null);
+	if (!tab?.url) return null;
+	const mainDomain = host(tab.url);
+	if (!mainDomain || mainDomain === trackerDomain) return null;
+
+	return { mainDomain, trackerDomain };
+}
+
+function isBlockedError(error) {
+	if (!error) return false;
+	const normalized = String(error).toLowerCase();
+	return normalized.includes('blocked');
+}
+
+async function trackTrackerEvent(details, { blocked }) {
+	const info = await resolveTrackerContext(details);
+	if (!info) return;
+
+	const { mainDomain, trackerDomain } = info;
+	const { trackerMap } = await load('trackerMap');
+	const tm = trackerMap || {};
+	if (!tm[mainDomain]) tm[mainDomain] = {};
+	tm[mainDomain][trackerDomain] = (tm[mainDomain][trackerDomain] || 0) + 1;
+	await store({ trackerMap: tm });
+
+	await updateRisk(mainDomain, `Tracker: ${trackerDomain}`);
+	await incrementStat('trackersDetected');
+	if (blocked) await incrementStat('trackersBlocked');
+}
 
 chrome.webRequest.onCompleted.addListener(
-	async details => {
-		if (details.type === 'main_frame' || details.tabId < 0) return;
-		const trackerDomain = host(details.url);
-		if (!TRACKER_DOMAINS.some(t => trackerDomain === t || trackerDomain.endsWith('.' + t))) return;
-		const tab = await chrome.tabs.get(details.tabId).catch(() => null);
-		if (!tab?.url) return;
-		const mainDomain = host(tab.url);
-		if (!mainDomain || mainDomain === trackerDomain) return;
-		const { trackerMap } = await load('trackerMap');
-		const tm = trackerMap || {};
-		if (!tm[mainDomain]) tm[mainDomain] = {};
-		tm[mainDomain][trackerDomain] = (tm[mainDomain][trackerDomain] || 0) + 1;
-		await store({ trackerMap: tm });
-		await updateRisk(mainDomain, `Tracker: ${trackerDomain}`);
-		await incrementStat('trackersBlocked');
+	details => {
+		trackTrackerEvent(details, { blocked: false });
 	},
 	{ urls: ['<all_urls>'], types: ['script', 'xmlhttprequest', 'image'] },
 );
 
+chrome.webRequest.onErrorOccurred.addListener(
+	details => {
+		if (!isBlockedError(details.error)) return;
+		trackTrackerEvent(details, { blocked: true });
+	},
+	{ urls: ['<all_urls>'], types: ['script', 'xmlhttprequest', 'image'] },
+);
 
 function showStartupReport(stats) {
-	if (!stats) return;
+	const s = normalizeStats(stats);
 	chrome.notifications.create('startup', {
 		type: 'basic',
 		iconUrl: 'icons/icon48.png',
-		title: 'Cookie Eater — Session Report',
-		message: `🍪 ${stats.cookiesDeleted || 0} cookies removed\n` + `🚫 ${stats.trackersBlocked || 0} trackers blocked\n` + `🛡️ ${stats.domainsProtected || 0} protected domains`,
+		title: 'Cookie Eater - Session Report',
+		message: `${s.cookiesDeleted || 0} cookies removed\n${s.trackersDetected || 0} tracker requests detected (${s.trackersBlocked || 0} blocked)\n${s.domainsProtected || 0} protected domains`,
 	});
 }
-
 
 async function saveProfile(name) {
 	const { profiles, settings, whitelist } = await load(['profiles', 'settings', 'whitelist']);
 	const list = [...(profiles || [])];
-	list.push({ id: Date.now().toString(), name, settings, whitelist, createdAt: Date.now() });
+	list.push({ id: Date.now().toString(), name, settings: normalizeSettings(settings), whitelist, createdAt: Date.now() });
 	await store({ profiles: list });
 }
 
 async function loadProfile(id) {
 	const { profiles } = await load('profiles');
-	const p = (profiles || []).find(p => p.id === id);
+	const p = (profiles || []).find(profile => profile.id === id);
 	if (!p) throw new Error('Profile not found');
-	await store({ settings: p.settings, whitelist: p.whitelist, activeProfile: id });
-	setupContextMenus();
-	setupAlarms();
+	await store({ settings: normalizeSettings(p.settings), whitelist: p.whitelist || [], activeProfile: id });
+	await setupContextMenus();
+	await setupAlarms();
 }
-
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 	dispatch(msg)
@@ -450,8 +597,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 
 async function dispatch(msg) {
 	switch (msg.action) {
-		case 'getStats':
-			return load(['stats', 'settings']);
+		case 'getStats': {
+			const { stats } = await load('stats');
+			return { stats: normalizeStats(stats) };
+		}
 		case 'clearStats':
 			await store({ stats: { ...DEFAULT_STATS, lastReset: Date.now() } });
 			return { ok: true };
@@ -471,20 +620,25 @@ async function dispatch(msg) {
 		}
 		case 'clearAll': {
 			const all = await chrome.cookies.getAll({});
-			for (const c of all) await removeCookie(c);
-			await incrementStat('cookiesDeleted', all.length);
-			return { count: all.length };
+			let deleted = 0;
+			for (const c of all) {
+				if (await removeCookie(c)) deleted++;
+			}
+			if (deleted > 0) await incrementStat('cookiesDeleted', deleted);
+			return { count: deleted };
 		}
+		case 'runScheduledClean':
+			return scheduledClean({ notifyUser: false });
 
 		case 'getSettings': {
 			const { settings } = await load('settings');
-			return settings || DEFAULT_SETTINGS;
+			return normalizeSettings(settings);
 		}
 		case 'saveSettings': {
 			const { settings } = await load('settings');
-			await store({ settings: { ...settings, ...msg.settings } });
-			setupContextMenus();
-			setupAlarms();
+			await store({ settings: { ...normalizeSettings(settings), ...(msg.settings || {}) } });
+			await setupContextMenus();
+			await setupAlarms();
 			return { ok: true };
 		}
 
@@ -493,7 +647,7 @@ async function dispatch(msg) {
 			return whitelist || [];
 		}
 		case 'saveWhitelist':
-			await store({ whitelist: msg.whitelist });
+			await store({ whitelist: msg.whitelist || [] });
 			return { ok: true };
 
 		case 'getSiteRules': {
@@ -501,7 +655,7 @@ async function dispatch(msg) {
 			return siteRules || [];
 		}
 		case 'saveSiteRules':
-			await store({ siteRules: msg.siteRules });
+			await store({ siteRules: msg.siteRules || [] });
 			return { ok: true };
 
 		case 'getProfiles':
@@ -565,9 +719,10 @@ async function dispatch(msg) {
 					acc[d] = (acc[d] || 0) + n;
 					return acc;
 				}, {});
+
 			return {
 				generatedAt: new Date().toISOString(),
-				stats: data.stats || DEFAULT_STATS,
+				stats: normalizeStats(data.stats),
 				summary: {
 					highRiskDomains: Object.entries(data.riskScores || {}).filter(([, v]) => v.score >= 50).length,
 					honeypots: (data.honeypots || []).length,
@@ -591,19 +746,30 @@ async function dispatch(msg) {
 			try {
 				const p = JSON.parse(msg.config);
 				const safe = {};
-				['settings', 'whitelist', 'siteRules', 'profiles'].forEach(k => {
-					if (p[k]) safe[k] = p[k];
-				});
+				if (p.settings) safe.settings = normalizeSettings(p.settings);
+				if (p.whitelist) safe.whitelist = p.whitelist;
+				if (p.siteRules) safe.siteRules = p.siteRules;
+				if (p.profiles) safe.profiles = p.profiles;
+
 				await store(safe);
-				setupContextMenus();
-				setupAlarms();
+				await ensureDefaults();
+				await setupContextMenus();
+				await setupAlarms();
 				return { ok: true };
 			} catch (e) {
 				return { error: 'Invalid JSON: ' + e.message };
 			}
 		}
+		case 'resetAll': {
+			await clearStorageArea(chrome.storage.local);
+			await clearStorageArea(chrome.storage.sync);
+			await store(defaultState());
+			await setupContextMenus();
+			await setupAlarms();
+			return { ok: true };
+		}
 
-		case 'rejected':
+		case 'rejected': {
 			await incrementStat('bannersRejected');
 			await audit('banner-rejected', msg.site, 'cookie-banner', msg.bannerType || 'auto');
 			const { consentReceipts } = await load('consentReceipts');
@@ -611,6 +777,7 @@ async function dispatch(msg) {
 			if (rlist.length > 500) rlist.length = 500;
 			await store({ consentReceipts: rlist });
 			return { ok: true };
+		}
 
 		case 'storageCleared':
 			await incrementStat('storageItemsCleared', msg.count || 1);
@@ -621,7 +788,6 @@ async function dispatch(msg) {
 	}
 }
 
-
 function host(url) {
 	try {
 		return new URL(url).hostname.replace(/^www\./, '');
@@ -630,7 +796,7 @@ function host(url) {
 	}
 }
 
-function classifyCookie(name, domain) {
+function classifyCookie(name) {
 	const n = name.toLowerCase();
 	if (/^(_ga|_gid|_gat|__utm|_gcl|amplitude_id|mp_|ajs_|heap_|__hstc|_hjid|mkto_|_mkto)/.test(n)) return 'Analytics';
 	if (/^(_fbp|_fbc|fr$|tr$|__gads|ide$|nid$|__gpi|_tt_|tiktok|_pin_unauth|anj)/.test(n)) return 'Marketing';
@@ -642,3 +808,4 @@ function classifyCookie(name, domain) {
 function notify(title, message) {
 	chrome.notifications.create({ type: 'basic', iconUrl: 'icons/icon48.png', title, message });
 }
+

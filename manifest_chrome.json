@@ -2,8 +2,8 @@
 	"manifest_version": 3,
 	"name": "Cookie Eater",
 	"description": "Total privacy protection: rejects cookies, blocks trackers, prevents fingerprinting, automatic cleaning and much more.",
-	"version": "2.0.0",
-	"permissions": ["cookies", "tabs", "storage", "webRequest", "declarativeNetRequest", "activeTab", "scripting", "notifications", "contextMenus", "alarms", "windows"],
+	"version": "2.1.0",
+	"permissions": ["cookies", "tabs", "storage", "webRequest", "declarativeNetRequest", "notifications", "contextMenus", "alarms", "windows"],
 	"host_permissions": ["<all_urls>"],
 	"background": { "service_worker": "background.js" },
 	"content_scripts": [

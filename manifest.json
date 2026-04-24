@@ -17,7 +17,7 @@
 		"48": "icons/icon48.png",
 		"128": "icons/icon128.png"
 	},
-	"permissions": ["cookies", "tabs", "storage", "browsingData", "notifications", "contextMenus", "alarms", "scripting", "declarativeNetRequest", "webRequest"],
+	"permissions": ["cookies", "tabs", "storage", "notifications", "contextMenus", "alarms", "declarativeNetRequest", "webRequest"],
 	"host_permissions": ["<all_urls>"],
 	"background": {
 		"scripts": ["background.js"]

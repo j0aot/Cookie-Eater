@@ -1,16 +1,39 @@
-(function () {
+﻿(function () {
 	'use strict';
 
-	chrome.storage.local.get('settings', ({ settings }) => {
-		const s = settings || {};
-		if (!s.enabled) return;
+	const DEBUG = false;
+	const PATCH_FLAG = '__cookieEaterPrivacyPatched__';
+
+	bootstrap();
+
+	async function bootstrap() {
+		if (window[PATCH_FLAG]) return;
+		window[PATCH_FLAG] = true;
+
+		const s = await getSettings();
+		if (s.enabled === false) return;
 		if (s.fingerprintProtection) applyFingerprintProtection();
 		if (s.stripTrackingParams) stripTrackingParams();
 		if (s.cleanLocalStorage || s.cleanSessionStorage) {
 			cleanWebStorage(s.cleanLocalStorage, s.cleanSessionStorage);
 		}
-	});
+	}
 
+	async function getSettings() {
+		const [syncData, localData] = await Promise.all([
+			new Promise(resolve => chrome.storage.sync.get('settings', resolve)),
+			new Promise(resolve => chrome.storage.local.get('settings', resolve)),
+		]);
+		return {
+			enabled: true,
+			fingerprintProtection: true,
+			stripTrackingParams: true,
+			cleanLocalStorage: true,
+			cleanSessionStorage: false,
+			...(localData?.settings || {}),
+			...(syncData?.settings || {}),
+		};
+	}
 
 	function applyFingerprintProtection() {
 		const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
@@ -20,10 +43,12 @@
 		};
 
 		const origToBlob = HTMLCanvasElement.prototype.toBlob;
-		HTMLCanvasElement.prototype.toBlob = function (cb, type, quality) {
-			noisifyCanvas(this);
-			return origToBlob.call(this, cb, type, quality);
-		};
+		if (origToBlob) {
+			HTMLCanvasElement.prototype.toBlob = function (cb, type, quality) {
+				noisifyCanvas(this);
+				return origToBlob.call(this, cb, type, quality);
+			};
+		}
 
 		const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
 		CanvasRenderingContext2D.prototype.getImageData = function (x, y, w, h) {
@@ -36,12 +61,14 @@
 			return data;
 		};
 
-		const getParamOrig = WebGLRenderingContext.prototype.getParameter;
-		WebGLRenderingContext.prototype.getParameter = function (param) {
-			if (param === 37445) return 'Intel Inc.'; 
-			if (param === 37446) return 'Intel Iris OpenGL Engine';
-			return getParamOrig.call(this, param);
-		};
+		if (window.WebGLRenderingContext) {
+			const getParamOrig = WebGLRenderingContext.prototype.getParameter;
+			WebGLRenderingContext.prototype.getParameter = function (param) {
+				if (param === 37445) return 'Intel Inc.';
+				if (param === 37446) return 'Intel Iris OpenGL Engine';
+				return getParamOrig.call(this, param);
+			};
+		}
 
 		if (window.AudioBuffer) {
 			const origGetChannelData = AudioBuffer.prototype.getChannelData;
@@ -102,6 +129,7 @@
 	function randNoise() {
 		return Math.floor((Math.random() - 0.5) * 3);
 	}
+
 	function clamp(v) {
 		return Math.max(0, Math.min(255, v));
 	}
@@ -147,7 +175,6 @@
 		'klaviyo_id',
 		'sib_uid',
 		'ttclid',
-	
 		'li_fat_id',
 		'rdt_cid',
 		'ScCid',
@@ -166,21 +193,22 @@
 	]);
 
 	function stripTrackingParams() {
-		const url = new URL(window.location.href);
-		let changed = false;
-		for (const key of [...url.searchParams.keys()]) {
-			if (TRACKING_PARAMS.has(key) || /^utm_/i.test(key)) {
-				url.searchParams.delete(key);
-				changed = true;
+		try {
+			const url = new URL(window.location.href);
+			let changed = false;
+			for (const key of [...url.searchParams.keys()]) {
+				if (TRACKING_PARAMS.has(key) || /^utm_/i.test(key)) {
+					url.searchParams.delete(key);
+					changed = true;
+				}
 			}
-		}
-		if (changed) {
-			const clean = url.toString();
-			history.replaceState(history.state, '', clean);
-			log('URL stripped:', window.location.href, '→', clean);
-		}
+			if (changed) {
+				const clean = url.toString();
+				history.replaceState(history.state, '', clean);
+				log('URL stripped:', window.location.href, '->', clean);
+			}
+		} catch (_) {}
 	}
-
 
 	const STORAGE_TRACKER_PATTERNS = [
 		/^_ga$/i,
@@ -201,10 +229,10 @@
 		/^hotjar_/i,
 		/^_hjid/i,
 		/^segment_/i,
-		/^td_/i, 
+		/^td_/i,
 		/^vero_/i,
 		/^criteo/i,
-		/^_lr_/i, 
+		/^_lr_/i,
 		/^fs\./i,
 		/^datadog/i,
 		/^dd_/i,
@@ -266,6 +294,7 @@
 	}
 
 	function log(...args) {
-		console.debug('[Cookie Eater]', ...args);
+		if (DEBUG) console.debug('[Cookie Eater]', ...args);
 	}
 })();
+

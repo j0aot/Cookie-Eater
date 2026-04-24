@@ -1,68 +1,96 @@
-# 🍪 Cookie Eater
+﻿# Cookie Eater
 
-**Cookie Eater** is a powerful, privacy-focused browser extension designed to give you control over your online data. It automatically handles annoying cookie consent banners, blocks invasive trackers, and protects your browser from advanced fingerprinting techniques.
+Cookie Eater is a privacy-focused browser extension that helps reduce cookie and tracker noise while keeping controls transparent.
 
----
+## Status
 
-## 📥 Installation
+- Current version: `2.1.0`
+- Firefox build uses: `manifest.json`
+- Chromium build (Chrome/Edge/Brave) uses: `manifest_chrome.json`
 
-### Official Store
+## Features
 
-- **Firefox:** [Get Cookie Eater on Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/cookie-eater/)
-- **Chrome/Edge/Brave:** Coming soon to the Web Store.
+- Automatic cookie banner handling (reject/preferences flows)
+- Domain cookie cleanup (single site or global)
+- Scheduled cleanup that respects whitelist and site rules
+- URL tracking parameter stripping (`utm_*`, `fbclid`, `gclid`, etc.)
+- Tracker domain mapping and risk scoring
+- Tracker metrics split into:
+  - detected tracker requests
+  - blocked tracker requests
+- Optional localStorage/sessionStorage cleanup for known tracker keys
+- Optional anti-fingerprinting hardening (canvas/audio/webgl related)
+- Profiles, audit log, GDPR receipts, and JSON import/export
 
-### Manual Install (Developer Mode)
+## Installation
 
-#### Chrome / Edge / Brave
+### Firefox (Developer Mode)
 
-1.  Download or clone this repository.
-2.  Open your browser and navigate to `chrome://extensions`.
-3.  Enable **"Developer mode"** in the top right corner.
-4.  Click **"Load unpacked"** and select the extension folder.
+1. Open `about:debugging`.
+2. Go to **This Firefox**.
+3. Click **Load Temporary Add-on...**.
+4. Select `manifest.json` from this repository.
 
-#### Firefox
+- or you can download it on the store https://addons.mozilla.org/pt-PT/firefox/addon/cookie-eater/
 
-1.  Open Firefox and type `about:debugging` in the address bar.
-2.  Click on **"This Firefox"** on the left sidebar.
-3.  Click **"Load Temporary Add-on..."** and select the `manifest.json` file from the project folder.
+### Chrome / Edge / Brave (Developer Mode)
 
----
+Chromium requires the Chrome-specific manifest (`manifest_chrome.json`).
 
-## 🚀 Key Features
+1. Clone or download this repository.
+2. Create a copy of the project folder for Chromium.
+3. In that copy, rename `manifest_chrome.json` to `manifest.json`.
+4. Open `chrome://extensions` (or `edge://extensions`).
+5. Enable **Developer mode**.
+6. Click **Load unpacked** and select the Chromium folder copy.
 
-### 1. Smart Banner Rejection
+Example in PowerShell (inside project root):
 
-- **Automatic "Reject All":** Uses surgical logic to detect and click "Reject", "No thanks", or "Necessary only" buttons on thousands of websites.
-- **Multi-Step Bypass:** Handles complex consent panels (like Didomi, OneTrust, and Cookiebot) by opening settings and opting out automatically.
-- **Universal Support:** Supports multiple languages including English, Portuguese, Spanish, French, German, and Italian.
+```powershell
+Copy-Item . ..\cookierefuser-chromium -Recurse -Force
+Copy-Item ..\cookierefuser-chromium\manifest_chrome.json ..\cookierefuser-chromium\manifest.json -Force
+```
 
-### 2. Network Privacy & Tracker Blocking
+## Main Settings
 
-- **Active Tracker Blocking:** Intercepts and blocks requests to known analytics and advertising services (Google Analytics, Facebook Pixel, Hotjar, etc.).
-- **URL Cleaning:** Automatically strips tracking parameters like `utm_source`, `fbclid`, and `gclid` from URLs.
+- `enabled`: Global protection toggle
+- `autoDeleteOnTabClose`: Deletes site cookies when the last tab for that domain is closed
+- `scheduledCleaningIntervalHours`: Periodic cleanup interval (hours)
+- `contextMenuEnabled`: Enables/disables right-click shortcuts
+- `showBadgeCount`: Shows per-site cookie count on extension badge
+- `autoIncognitoThreshold`: Suggests incognito for high-risk domains
 
-### 3. Advanced Anti-Fingerprinting
+## Privacy Notes
 
-- **API Noise:** Protects against profiling by adding subtle random noise to Canvas, WebGL, and AudioContext APIs.
-- **Hardware Masking:** Spoofs hardware concurrency and device memory to prevent unique device identification.
+- No remote telemetry is implemented in the extension logic.
+- UI assets no longer depend on external font/favicon providers.
+- Data is stored in browser extension storage (`storage.local` / `storage.sync`).
 
-### 4. Storage & Cookie Automation
-
-- **Auto-Delete:** Optionally clears cookies for a domain as soon as you close its last open tab.
-- **Scheduled Cleanups:** Set intervals to automatically purge non-whitelisted cookies.
-
----
-
-## 📁 File Structure
+## Project Structure
 
 ```text
-cookie-eater/
-├── manifest.json         # Extension configuration (Firefox/Gecko)
-├── background.js         # Service worker for stats, sync, and network monitoring
-├── content.js            # Surgical script for banner rejection
-├── content-privacy.js    # Anti-fingerprinting and URL cleaning
-├── rules.json            # DeclarativeNetRequest blocking rules
-├── popup.html / .js      # Quick interface and cookie controls
-├── options.html / .js    # Advanced settings and reports
-└── icons/                # Extension icons
+cookierefuser/
+|-- manifest.json           # Firefox manifest
+|-- manifest_chrome.json    # Chromium manifest
+|-- background.js           # Core logic, stats, cleanup, messaging, alarms
+|-- content.js              # Cookie banner automation
+|-- content-privacy.js      # URL/storage/fingerprint protections
+|-- popup.html
+|-- popup.js                # Quick actions UI
+|-- options.html
+|-- options.js              # Full settings/report UI
+|-- rules.json              # DeclarativeNetRequest tracker rules
+`-- icons/
+```
+
+## Development Quick Checks
+
+Run syntax checks after changes:
+
+```powershell
+node --check background.js
+node --check content.js
+node --check content-privacy.js
+node --check popup.js
+node --check options.js
 ```

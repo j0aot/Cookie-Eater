@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const $ = id => document.getElementById(id);
 let currentDomain = '';
@@ -19,6 +19,8 @@ function createEl(tag, attrs = {}, children = []) {
 }
 
 async function init() {
+	$('app-version').textContent = `v${chrome.runtime.getManifest().version}`;
+
 	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 	currentTab = tab;
 	currentDomain = tab?.url ? host(tab.url) : '';
@@ -28,11 +30,12 @@ async function init() {
 
 	if (currentDomain) {
 		$('site-name').textContent = currentDomain;
-		$('favicon').src = `https://www.google.com/s2/favicons?domain=${currentDomain}&sz=16`;
+		$('favicon').src = chrome.runtime.getURL('icons/icon16.png');
 		loadRisk();
 		loadCookies();
 	} else {
 		$('site-name').textContent = 'Extension / New tab';
+		$('favicon').src = chrome.runtime.getURL('icons/icon16.png');
 		$('cookies-list').replaceChildren(createEl('div', { className: 'no-cookies', textContent: 'Open a website to view cookies.' }));
 	}
 
@@ -44,13 +47,13 @@ function bindEvents() {
 	$('toggle').addEventListener('change', async () => {
 		const enabled = $('toggle').checked;
 		await msg('saveSettings', { settings: { enabled } });
-		toast(enabled ? '✅ Protection enabled' : '⏸ Protection paused');
+		toast(enabled ? 'Protection enabled' : 'Protection paused');
 	});
 
 	$('btn-clear').addEventListener('click', async () => {
 		if (!currentDomain) return;
 		const { count } = await msg('clearDomain', { domain: currentDomain, url: currentTab?.url });
-		toast(`🧹 ${count} cookies removed`);
+		toast(`${count} cookies removed`);
 		loadCookies();
 		loadStats();
 	});
@@ -62,11 +65,11 @@ function bindEvents() {
 		if (exists) {
 			const updated = wl.filter(e => e.domain !== currentDomain);
 			await msg('saveWhitelist', { whitelist: updated });
-			toast('❌ Removed from whitelist');
+			toast('Removed from whitelist');
 		} else {
 			wl.push({ domain: currentDomain, type: 'white', cookies: [] });
 			await msg('saveWhitelist', { whitelist: wl });
-			toast('✅ Added to whitelist');
+			toast('Added to whitelist');
 		}
 		loadCookies();
 	});
@@ -74,7 +77,7 @@ function bindEvents() {
 	$('btn-clear-all').addEventListener('click', async () => {
 		if (!confirm('Clear ALL cookies from ALL sites?')) return;
 		const { count } = await msg('clearAll');
-		toast(`🗑️ ${count} cookies removed from all sites`);
+		toast(`${count} cookies removed from all sites`);
 		loadCookies();
 		loadStats();
 	});
@@ -104,7 +107,7 @@ function bindEvents() {
 	$('lnk-reset').addEventListener('click', async () => {
 		if (!confirm('Clear all statistics?')) return;
 		await msg('clearStats');
-		toast('📊 Statistics cleared');
+		toast('Statistics cleared');
 		loadStats();
 	});
 }
@@ -113,7 +116,7 @@ async function loadStats() {
 	const { stats } = await msg('getStats');
 	if (!stats) return;
 	$('s-cookies').textContent = fmt(stats.cookiesDeleted || 0);
-	$('s-trackers').textContent = fmt(stats.trackersBlocked || 0);
+	$('s-trackers').textContent = fmt(stats.trackersDetected ?? stats.trackersBlocked ?? 0);
 	$('s-banners').textContent = fmt(stats.bannersRejected || 0);
 }
 
@@ -134,7 +137,7 @@ async function loadCookies() {
 	$('cookie-count-label').textContent = `${cookies.length} cookie${cookies.length !== 1 ? 's' : ''} on this site`;
 
 	if (cookies.length === 0) {
-		list.replaceChildren(createEl('div', { className: 'no-cookies', textContent: '🎉 No cookies detected!' }));
+		list.replaceChildren(createEl('div', { className: 'no-cookies', textContent: 'No cookies detected.' }));
 		return;
 	}
 
@@ -154,7 +157,7 @@ async function loadCookies() {
 }
 
 function msg(action, extra = {}) {
-	return new Promise(r => chrome.runtime.sendMessage({ action, ...extra }, r));
+	return new Promise(resolve => chrome.runtime.sendMessage({ action, ...extra }, resolve));
 }
 
 function host(url) {
@@ -170,12 +173,13 @@ function fmt(n) {
 }
 
 let toastTimer;
-function toast(msg) {
+function toast(message) {
 	const el = $('toast');
-	el.textContent = msg;
+	el.textContent = message;
 	el.classList.add('show');
 	clearTimeout(toastTimer);
 	toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
 init();
+

@@ -4,7 +4,6 @@
 		<meta charset="UTF-8" />
 		<title>Cookie Eater</title>
 		<style>
-			@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 			:root {
 				--bg: #f8fafc;
 				--s1: #ffffff;
@@ -427,7 +426,7 @@
 				</div>
 			</div>
 			<div class="hdr-right">
-				<span class="badge-ver">v1.0</span>
+				<span class="badge-ver" id="app-version">v-</span>
 				<label class="toggle" title="Enable/Disable protection">
 					<input type="checkbox" id="toggle" checked />
 					<span class="slider"></span>
@@ -450,7 +449,7 @@
 			</div>
 			<div class="stat">
 				<div class="stat-val" id="s-trackers">0</div>
-				<div class="stat-lbl">Trackers Blocked</div>
+				<div class="stat-lbl">Tracker Requests</div>
 			</div>
 			<div class="stat">
 				<div class="stat-val" id="s-banners">0</div>
