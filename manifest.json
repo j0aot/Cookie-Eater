@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "Cookie Eater",
-	"version": "2.1.0",
+	"version": "2.2.0",
 	"description": "Total privacy protection: rejects cookies, blocks trackers, prevents fingerprinting and more.",
 	"browser_specific_settings": {
 		"gecko": {
